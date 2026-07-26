@@ -136,7 +136,10 @@ namespace MeixiEcho
             GameObject label = new("第二章入口文字");
             label.transform.SetParent(parent, false);
             label.transform.position = new Vector3(0f, 5.24f, 33.76f);
-            label.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            // The player approaches from the south side of the board. TextMesh's
+            // identity-facing side is readable from that direction; 180 degrees
+            // mirrored the chapter title at the end of the first-chapter road.
+            label.transform.rotation = Quaternion.identity;
             TextMesh text = label.AddComponent<TextMesh>();
             text.text = "第二章 · 古厝戏台";
             text.anchor = TextAnchor.MiddleCenter;
@@ -148,7 +151,19 @@ namespace MeixiEcho
             if (font != null)
             {
                 text.font = font;
-                text.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+                MeshRenderer textRenderer = text.GetComponent<MeshRenderer>();
+                Shader depthTextShader = Shader.Find("MeixiEcho/World Text Depth");
+                if (depthTextShader != null)
+                {
+                    Material depthTextMaterial = new(depthTextShader) { name = "第二章入口深度文字" };
+                    depthTextMaterial.SetTexture("_MainTex", font.material.mainTexture);
+                    depthTextMaterial.SetColor("_Color", Color.white);
+                    textRenderer.sharedMaterial = depthTextMaterial;
+                    Debug.Log("[MeixiRoute] Entrance label uses depth-tested world text material.");
+                }
+                else textRenderer.sharedMaterial = font.material;
+                textRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                textRenderer.receiveShadows = false;
             }
         }
 

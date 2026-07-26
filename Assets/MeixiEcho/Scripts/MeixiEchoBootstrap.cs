@@ -11,6 +11,7 @@ namespace MeixiEcho
         private static void Register()
         {
             theatreCaptureRedirected = false;
+            MeixiStartupLogo.ShowOnce();
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
@@ -19,7 +20,11 @@ namespace MeixiEcho
         {
             if (!theatreCaptureRedirected && scene.name != "MeixiTheatre" &&
                 System.Array.Exists(System.Environment.GetCommandLineArgs(), value =>
-                    string.Equals(value, "-meixiTheatreCapture", System.StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(value, "-meixiTheatreCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiTheatreSettingsCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiTheatrePauseCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiMinOperaPreludeCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiEndingCapture", System.StringComparison.OrdinalIgnoreCase)))
             {
                 theatreCaptureRedirected = true;
                 // Loading another large scene synchronously from inside sceneLoaded

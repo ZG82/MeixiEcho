@@ -30,6 +30,7 @@ namespace MeixiEcho
             firstDialogue = dialogue;
             repeatDialogue = repeatLine;
             Glyph = glyph;
+            hasTalked = false;
             idlePhase = Mathf.Abs(transform.position.x * 0.37f + transform.position.z * 0.19f);
             if (transform.childCount > 0)
             {

@@ -1,8 +1,10 @@
 #if UNITY_EDITOR
 using System.IO;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace MeixiEcho.Editor
@@ -11,6 +13,23 @@ namespace MeixiEcho.Editor
     public static class MeixiTheatreSceneBuilder
     {
         private const string ScenePath = "Assets/Scenes/MeixiTheatre.unity";
+        private const string PreviewAssetFolder = "Assets/MeixiEcho/Generated/TheatrePreview";
+
+        [InitializeOnLoadMethod]
+        private static void ScheduleMissingPreviewRepair()
+        {
+            EditorApplication.delayCall += () =>
+            {
+                if (Application.isBatchMode || EditorApplication.isPlayingOrWillChangePlaymode) return;
+                Scene active = SceneManager.GetActiveScene();
+                if (!active.IsValid() || active.path != ScenePath) return;
+                if (GameObject.Find("MeixiTheatre_EditorPreview") != null) return;
+                BuildInternal();
+                EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+                SceneView.lastActiveSceneView?.FrameSelected();
+                Debug.Log("[MeixiTheatreIDE] 检测到第二章空预览，已自动恢复完整可视化场景。");
+            };
+        }
 
         [MenuItem("Meixi/Build Editable Theatre Scene", priority = 12)]
         public static void BuildEditableTheatre() { BuildInternal(); EditorSceneManager.OpenScene(ScenePath); }
@@ -18,12 +37,19 @@ namespace MeixiEcho.Editor
 
         private static void BuildInternal()
         {
-            // Keep the build scene deliberately small. The previous editor-expanded
-            // theatre could emit an invalid level1 stream in Unity 6 on Windows.
-            // TheatreStageRuntime now creates the visual set after the scene loads.
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var root = new GameObject("MeixiTheatre_RuntimeRoot");
             root.AddComponent<TheatreStageRuntime>();
+
+            // Full EditorOnly copy: visible in Scene/Game View but stripped from the
+            // Windows player. Runtime still creates its stable lightweight instance.
+            var preview = new GameObject("MeixiTheatre_EditorPreview");
+            preview.tag = "EditorOnly";
+            TheatreRuntimeEnvironment.Ensure(preview.transform);
+            PrepareEditorPreview(preview);
+            PersistPreviewAssets(preview);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[]
@@ -32,7 +58,105 @@ namespace MeixiEcho.Editor
                 new EditorBuildSettingsScene(ScenePath, true)
             };
             AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Selection.activeGameObject = preview;
+            Debug.Log("[MeixiTheatreIDE] 第二章完整 EditorOnly 预览已生成，运行构建仍使用稳定动态场景。");
+        }
+
+        private static void PrepareEditorPreview(GameObject preview)
+        {
+            foreach (TheatreInstrument instrument in preview.GetComponentsInChildren<TheatreInstrument>(true))
+                Object.DestroyImmediate(instrument);
+            foreach (AudioSource audioSource in preview.GetComponentsInChildren<AudioSource>(true))
+                Object.DestroyImmediate(audioSource);
+            foreach (SphereCollider trigger in preview.GetComponentsInChildren<SphereCollider>(true))
+                if (trigger.isTrigger) Object.DestroyImmediate(trigger);
+
+            Camera camera = preview.GetComponentInChildren<Camera>(true);
+            if (camera != null)
+            {
+                camera.enabled = true;
+                camera.transform.position = new Vector3(10.8f, 6.5f, -7.8f);
+                Vector3 focus = new Vector3(0f, 3.1f, 8.2f);
+                camera.transform.rotation = Quaternion.LookRotation(focus - camera.transform.position, Vector3.up);
+                camera.fieldOfView = 55f;
+            }
+        }
+
+        private static void PersistPreviewAssets(GameObject preview)
+        {
+            if (AssetDatabase.IsValidFolder(PreviewAssetFolder)) AssetDatabase.DeleteAsset(PreviewAssetFolder);
+            EnsureFolder("Assets/MeixiEcho/Generated");
+            EnsureFolder(PreviewAssetFolder);
+
+            var meshMap = new Dictionary<EntityId, Mesh>();
+            int meshIndex = 0;
+            foreach (MeshFilter filter in preview.GetComponentsInChildren<MeshFilter>(true))
+            {
+                Mesh source = filter.sharedMesh;
+                if (source == null || !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(source))) continue;
+                EntityId sourceId = source.GetEntityId();
+                if (!meshMap.TryGetValue(sourceId, out Mesh saved))
+                {
+                    saved = Object.Instantiate(source);
+                    saved.name = source.name;
+                    string path = $"{PreviewAssetFolder}/Mesh_{meshIndex++:D3}_{SafeName(source.name)}.asset";
+                    AssetDatabase.CreateAsset(saved, path);
+                    meshMap[sourceId] = saved;
+                }
+                filter.sharedMesh = saved;
+            }
+
+            var materialMap = new Dictionary<string, Material>(System.StringComparer.Ordinal);
+            int materialIndex = 0;
+            foreach (Renderer renderer in preview.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] slots = renderer.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    Material source = slots[i];
+                    if (source == null || !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(source))) continue;
+                    string materialKey = source.name.Replace(" (Instance)", string.Empty);
+                    if (!materialMap.TryGetValue(materialKey, out Material saved))
+                    {
+                        saved = new Material(source) { name = materialKey };
+                        string path = $"{PreviewAssetFolder}/Material_{materialIndex++:D3}_{SafeName(materialKey)}.mat";
+                        AssetDatabase.CreateAsset(saved, path);
+                        materialMap[materialKey] = saved;
+                    }
+                    slots[i] = saved;
+                    changed = true;
+                }
+                if (changed) renderer.sharedMaterials = slots;
+            }
+
+            int profileIndex = 0;
+            foreach (Volume volume in preview.GetComponentsInChildren<Volume>(true))
+            {
+                VolumeProfile source = volume.profile;
+                if (source == null || !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(source))) continue;
+                VolumeProfile saved = Object.Instantiate(source);
+                saved.name = source.name;
+                AssetDatabase.CreateAsset(saved, $"{PreviewAssetFolder}/Volume_{profileIndex++:D2}_{SafeName(source.name)}.asset");
+                volume.sharedProfile = saved;
+            }
+        }
+
+        private static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path)) return;
+            string parent = Path.GetDirectoryName(path)?.Replace('\\', '/');
+            string name = Path.GetFileName(path);
+            if (!string.IsNullOrEmpty(parent) && !AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, name);
+        }
+
+        private static string SafeName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "Asset";
+            foreach (char invalid in Path.GetInvalidFileNameChars()) value = value.Replace(invalid, '_');
+            return value.Replace('/', '_').Replace('\\', '_');
         }
 
         private static void BuildLegacyReferenceScene()

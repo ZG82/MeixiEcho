@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /PromoWeb
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      website-runtime:
+        dependency-type: production
+      website-development:
+        dependency-type: development
+

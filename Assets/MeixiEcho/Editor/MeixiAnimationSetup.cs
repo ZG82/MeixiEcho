@@ -12,10 +12,18 @@ namespace MeixiEcho.Editor
     public static class MeixiAnimationSetup
     {
         private const string LinMoModel = "Assets/MeixiEcho/Resources/Models/Characters/LinMo.fbx";
+        private static readonly string[] RealisticCastModels =
+        {
+            "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast/LinMo/Male_Adult_20.fbx",
+            "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast/VillageElder/Male_Adult_03.fbx",
+            "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast/VillageChild/Male_Child_02.fbx",
+            "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast/VillageAunt/Female_Adult_12.fbx"
+        };
+        private const string RealisticCastFolder = "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast";
         private const string MotionModel = "Assets/MeixiEcho/Resources/Animations/KayKitHumanoidMotions.fbx";
         private const string AnimationFolder = "Assets/MeixiEcho/Resources/Animations";
         private const string PlayerController = AnimationFolder + "/LinMoCombat.controller";
-        private const string ControllerVersion = "MeixiEcho.LinMoCombat.v3";
+        private const string ControllerVersion = "MeixiEcho.LinMoCombat.v6-continuous-arm-swing";
 
         static MeixiAnimationSetup()
         {
@@ -44,6 +52,12 @@ namespace MeixiEcho.Editor
 
             EnsureFolder(AnimationFolder);
             ConfigureHumanoid(LinMoModel, false);
+            foreach (string castModel in RealisticCastModels)
+            {
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(castModel) != null)
+                    ConfigureHumanoid(castModel, false);
+            }
+            ConfigureRealisticCastTextures();
             ConfigureHumanoid(MotionModel, true);
             ConfigureClipLoops(MotionModel);
 
@@ -119,6 +133,32 @@ namespace MeixiEcho.Editor
             importer.SaveAndReimport();
         }
 
+        private static void ConfigureRealisticCastTextures()
+        {
+            if (!AssetDatabase.IsValidFolder(RealisticCastFolder)) return;
+            foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { RealisticCastFolder }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (AssetImporter.GetAtPath(path) is not TextureImporter importer) continue;
+                string lower = path.ToLowerInvariant();
+                bool normal = lower.Contains("_normal");
+                bool dataMap = normal || lower.Contains("_specular");
+                bool changed = importer.maxTextureSize != 2048 ||
+                               importer.textureCompression != TextureImporterCompression.CompressedHQ ||
+                               importer.textureType != (normal ? TextureImporterType.NormalMap : TextureImporterType.Default) ||
+                               importer.sRGBTexture == dataMap;
+                if (!changed) continue;
+
+                importer.maxTextureSize = 2048;
+                importer.textureCompression = TextureImporterCompression.CompressedHQ;
+                importer.crunchedCompression = false;
+                importer.textureType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+                importer.sRGBTexture = !dataMap;
+                importer.alphaIsTransparency = lower.Contains("_opacity");
+                importer.SaveAndReimport();
+            }
+        }
+
         private static void BuildPlayerController(IReadOnlyDictionary<string, AnimationClip> clips)
         {
             AnimatorController controller = RecreateController(PlayerController);
@@ -131,6 +171,9 @@ namespace MeixiEcho.Editor
             controller.AddParameter("Victory", AnimatorControllerParameterType.Trigger);
 
             AnimatorStateMachine machine = controller.layers[0].stateMachine;
+            AnimatorControllerLayer baseLayer = controller.layers[0];
+            baseLayer.iKPass = true;
+            controller.layers = new[] { baseLayer };
             var locomotionTree = new BlendTree
             {
                 name = "MeixiLocomotionBlend",

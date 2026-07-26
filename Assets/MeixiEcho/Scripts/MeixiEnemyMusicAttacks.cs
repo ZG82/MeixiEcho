@@ -22,6 +22,9 @@ namespace MeixiEcho
                     EnemyGroundSoundWave3D.Create(player, origin + Vector3.up * 0.12f, impactDsp,
                         new Color(0.08f, 0.88f, 1f), new Color(0.34f, 0.42f, 1f));
                     break;
+                case 3:
+                    EnemyDashLaneTelegraph3D.Create(player, origin + Vector3.up * .10f, impactDsp);
+                    break;
                 default:
                     EnemyHomingChord3D.Create(player, origin + Vector3.up * 1.05f, impactDsp);
                     break;
@@ -46,6 +49,184 @@ namespace MeixiEcho
         public static void ClearAll()
         {
             EnemyTrackedAttackVfx3D.ClearEveryActiveAttack();
+        }
+    }
+
+    /// <summary>敌人长距离冲刺前的追踪音轨；锁点后形成清晰的橙红五线谱走廊。</summary>
+    public sealed class EnemyDashLaneTelegraph3D : EnemyTrackedAttackVfx3D
+    {
+        private Transform target;
+        private Vector3 start;
+        private Vector3 lockedTarget;
+        private double launchDsp;
+        private double impactDsp;
+        private bool targetLocked;
+        private LineRenderer[] lanes;
+        private Transform[] notes;
+
+        public static void Create(Transform player, Vector3 origin, double hitDsp)
+        {
+            var root = new GameObject("溪灵攻击·长距离音符冲刺预兆");
+            var effect = root.AddComponent<EnemyDashLaneTelegraph3D>();
+            effect.target = player;
+            effect.start = origin;
+            effect.lockedTarget = player.position + Vector3.up * .10f;
+            effect.launchDsp = AudioSettings.dspTime;
+            effect.impactDsp = System.Math.Max(hitDsp, effect.launchDsp + .22d);
+            Material warm = EnemyMusicVfxFactory3D.CreateMaterial("冲刺橙红谱线",
+                new Color(1f, .24f, .06f, .88f), true);
+            Material white = EnemyMusicVfxFactory3D.CreateMaterial("冲刺白金中心线",
+                new Color(1f, .92f, .62f, .96f), true);
+            effect.lanes = new LineRenderer[5];
+            for (int lane = 0; lane < effect.lanes.Length; lane++)
+            {
+                LineRenderer line = EnemyMusicVfxFactory3D.CreateCurve(root.transform, "冲刺锁定五线谱_" + lane,
+                    lane == 2 ? white : warm, 42, lane == 2 ? .12f : .055f);
+                line.useWorldSpace = true;
+                effect.lanes[lane] = line;
+            }
+            effect.notes = new Transform[7];
+            for (int i = 0; i < effect.notes.Length; i++)
+            {
+                effect.notes[i] = EnemyMusicVfxFactory3D.CreateNote(root.transform, "冲刺追踪音符_" + i,
+                    i % 2 == 0 ? new Color(1f, .28f, .08f) : new Color(1f, .82f, .26f),
+                    Color.white, i == 3 ? .28f : .19f, i == 3);
+            }
+            effect.UpdateGeometry(0f);
+            EnemyMusicVfxFactory3D.CreateCastBurst(origin, new Color(1f, .34f, .08f));
+        }
+
+        private void Update()
+        {
+            if (target == null) { Destroy(gameObject); return; }
+            float t = Mathf.Clamp01((float)((AudioSettings.dspTime - launchDsp) /
+                System.Math.Max(.05d, impactDsp - launchDsp)));
+            if (!targetLocked)
+            {
+                lockedTarget = target.position + Vector3.up * .10f;
+                if (t >= .80f) targetLocked = true;
+            }
+            UpdateGeometry(t);
+            if (t >= 1f) Destroy(gameObject);
+        }
+
+        private void UpdateGeometry(float progress)
+        {
+            Vector3 flat = Vector3.ProjectOnPlane(lockedTarget - start, Vector3.up);
+            Vector3 forward = flat.sqrMagnitude > .01f ? flat.normalized : Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+            for (int lane = 0; lane < lanes.Length; lane++)
+            {
+                if (lanes[lane] == null) continue;
+                float lateral = (lane - 2) * .24f;
+                for (int i = 0; i < lanes[lane].positionCount; i++)
+                {
+                    float t = i / (lanes[lane].positionCount - 1f);
+                    float warningWave = Mathf.Sin(t * Mathf.PI * 8f + lane) * .035f * Mathf.Sin(t * Mathf.PI);
+                    lanes[lane].SetPosition(i, Vector3.Lerp(start, lockedTarget, t) + right * (lateral + warningWave) +
+                        Vector3.up * (.08f + Mathf.Sin(t * Mathf.PI) * (lane == 2 ? .20f : .10f)));
+                }
+                Color c = lanes[lane].startColor;
+                c.a = .40f + progress * .58f;
+                lanes[lane].startColor = c;
+                lanes[lane].endColor = new Color(1f, .14f, .04f, c.a * .42f);
+            }
+            for (int i = 0; i < notes.Length; i++)
+            {
+                if (notes[i] == null) continue;
+                float laneProgress = Mathf.Repeat(progress * 1.18f + i / (float)notes.Length, 1f);
+                notes[i].position = Vector3.Lerp(start, lockedTarget, laneProgress) + right * Mathf.Sin(i * 1.8f) * .34f +
+                    Vector3.up * (.32f + Mathf.Sin(laneProgress * Mathf.PI) * .48f);
+                notes[i].Rotate(80f * Time.deltaTime, 150f * Time.deltaTime, -110f * Time.deltaTime, Space.Self);
+            }
+        }
+
+        public override void LockImpactPoint(Vector3 worldPosition)
+        {
+            lockedTarget = worldPosition + Vector3.up * .10f;
+            targetLocked = true;
+        }
+    }
+
+    /// <summary>实际冲刺期间附着于溪灵路径的音符残像与五线谱尾迹。</summary>
+    public sealed class EnemyDashNoteTrail3D : MonoBehaviour
+    {
+        private LineRenderer[] ribbons;
+        private Transform[] notes;
+        private Vector3[] noteScales;
+        private Vector3 start;
+        private Vector3 target;
+        private float duration;
+        private float age;
+
+        public static void Create(Transform owner, Vector3 from, Vector3 to, float dashDuration)
+        {
+            var root = new GameObject("溪灵冲刺·音符残像尾迹");
+            var effect = root.AddComponent<EnemyDashNoteTrail3D>();
+            effect.start = from + Vector3.up * .16f;
+            effect.target = to + Vector3.up * .16f;
+            effect.duration = Mathf.Max(.18f, dashDuration + .32f);
+            Material orange = EnemyMusicVfxFactory3D.CreateMaterial("冲刺实体橙光",
+                new Color(1f, .24f, .04f, .94f), true);
+            effect.ribbons = new LineRenderer[5];
+            Vector3 travel = Vector3.ProjectOnPlane(to - from, Vector3.up);
+            Vector3 forward = travel.sqrMagnitude > .01f ? travel.normalized : Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+            for (int ribbon = 0; ribbon < effect.ribbons.Length; ribbon++)
+            {
+                LineRenderer line = EnemyMusicVfxFactory3D.CreateCurve(root.transform, "冲刺实体谱带_" + ribbon,
+                    orange, 38, ribbon == 2 ? .16f : .075f);
+                line.useWorldSpace = true;
+                line.startColor = ribbon == 2 ? Color.white : new Color(1f, .32f, .06f);
+                line.endColor = new Color(1f, .08f, .02f, .08f);
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float wave = Mathf.Sin(t * Mathf.PI * 6f + ribbon) * Mathf.Sin(t * Mathf.PI) * .10f;
+                    line.SetPosition(i, Vector3.Lerp(effect.start, effect.target, t) +
+                        right * ((ribbon - 2) * .10f + wave) + Vector3.up * Mathf.Sin(t * Mathf.PI) * .34f);
+                }
+                effect.ribbons[ribbon] = line;
+            }
+            effect.notes = new Transform[9];
+            effect.noteScales = new Vector3[effect.notes.Length];
+            for (int i = 0; i < effect.notes.Length; i++)
+            {
+                float t = (i + .5f) / effect.notes.Length;
+                Transform note = EnemyMusicVfxFactory3D.CreateNote(root.transform, "冲刺残像音符_" + i,
+                    i % 3 == 0 ? Color.white : new Color(1f, .34f, .06f),
+                    new Color(1f, .86f, .28f), .14f + (i % 3) * .018f, i == 4);
+                note.position = Vector3.Lerp(effect.start, effect.target, t) + right * Mathf.Sin(i * 2.1f) * .30f +
+                    Vector3.up * (.36f + Mathf.Sin(t * Mathf.PI) * .46f);
+                effect.notes[i] = note;
+                effect.noteScales[i] = note.localScale;
+            }
+        }
+
+        private void Update()
+        {
+            age += Time.deltaTime;
+            float t = Mathf.Clamp01(age / duration);
+            float alpha = 1f - Mathf.SmoothStep(.28f, 1f, t);
+            foreach (LineRenderer line in ribbons)
+            {
+                if (line == null) continue;
+                Color startColor = line.startColor;
+                startColor.a = alpha;
+                line.startColor = startColor;
+                Color endColor = line.endColor;
+                endColor.a = alpha * .10f;
+                line.endColor = endColor;
+                line.widthMultiplier *= 1f + Time.deltaTime * .75f;
+            }
+            for (int i = 0; i < notes.Length; i++)
+            {
+                Transform note = notes[i];
+                if (note == null) continue;
+                note.Rotate(110f * Time.deltaTime, -170f * Time.deltaTime, 90f * Time.deltaTime, Space.Self);
+                note.localScale = noteScales[i] * Mathf.Lerp(1f, .12f, t);
+            }
+            if (age >= duration) Destroy(gameObject);
         }
     }
 

@@ -32,6 +32,10 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Codex / local automation request payloads
+/.codex/
+/.agents/
+
 # Unity generated directories
 [Ll]ibrary/
 [Tt]emp/
@@ -42,6 +46,10 @@ Thumbs.db
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
 [Rr]ecordings/
+
+# Unity crash recovery scenes
+/Assets/_Recovery/
+/Assets/_Recovery.meta
 
 # Unity generated project/IDE files
 *.csproj
@@ -67,5 +75,17 @@ crashlytics-build.properties
 *.app
 *.unitypackage
 
-# Keep source assets and their metadata
-!/[Aa]ssets/**/*.meta
+# Local release artifacts belong in GitHub Releases, not in source control
+/Release/
+/PromoWeb/public/downloads/*.exe
+/PromoWeb/public/downloads/*.msi
+/PromoWeb/public/downloads/*.zip
+
+# Locally unpacked installer toolchain; keep only the project .iss script
+/Tools/Installer/InnoSetup/
+
+# Local design references and source media copied into Assets when approved
+/场景图片/
+
+# Legacy top-level web export (the maintained site is under PromoWeb/)
+/public/

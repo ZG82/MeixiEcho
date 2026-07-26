@@ -28,11 +28,18 @@ namespace MeixiEcho
         private bool meleeAttackArmed;
         private bool meleeImpactResolved;
         private bool meleeLungeLogged;
-        private float footstepTimer;
+
+        internal bool AllowsNaturalArmSwingCorrection =>
+            actionLockTimer <= 0.01f && dashTimer <= 0.01f &&
+            !finisherAnimationActive && !finisherProceduralActive;
+        private bool meleeInputBuffered;
+        private int meleeComboStep;
+        private float meleeComboExpiresAt;
         private bool animationPreview;
         private float animationPreviewStarted;
         private bool previewLightTriggered;
         private bool previewHeavyTriggered;
+        private bool previewLocomotionLogged;
         private Vector3 lastMove = Vector3.forward;
         private Vector3 dashDirection = Vector3.forward;
         private Vector3 meleeDirection = Vector3.forward;
@@ -48,6 +55,8 @@ namespace MeixiEcho
         private bool initialGroundSnapPending;
         private float initialGroundSnapDeadline;
         private float nextInitialGroundProbe;
+        private Vector2 validationMoveInput;
+        private float validationMoveUntil = -1f;
         private readonly RaycastHit[] groundHits = new RaycastHit[12];
         private readonly int speedHash = Animator.StringToHash("Speed");
         private readonly int groundedHash = Animator.StringToHash("Grounded");
@@ -60,6 +69,12 @@ namespace MeixiEcho
         public Vector3 Forward => lastMove.sqrMagnitude > 0.01f ? lastMove.normalized : transform.forward;
         public bool IsInvulnerable => dashTimer > 0.015f;
 
+        public void InjectValidationMove(Vector2 input, float duration)
+        {
+            validationMoveInput = Vector2.ClampMagnitude(input, 1f);
+            validationMoveUntil = Time.unscaledTime + Mathf.Max(0f, duration);
+        }
+
         public void ResetForNewSession()
         {
             CompleteFinalStrikeAnimation();
@@ -71,6 +86,9 @@ namespace MeixiEcho
             meleeLungeTimer = 0f;
             meleeAttackArmed = false;
             meleeImpactResolved = false;
+            meleeInputBuffered = false;
+            meleeComboStep = 0;
+            meleeComboExpiresAt = -1f;
             horizontalVelocity = Vector3.zero;
             horizontalSmoothVelocity = Vector3.zero;
             lastMove = transform.forward.sqrMagnitude > 0.01f ? transform.forward : Vector3.forward;
@@ -78,6 +96,8 @@ namespace MeixiEcho
             meleeDirection = lastMove;
             wasDashing = false;
             animationPreview = false;
+            validationMoveInput = Vector2.zero;
+            validationMoveUntil = -1f;
             initialGroundSnapPending = true;
             initialGroundSnapDeadline = Time.unscaledTime + 1.5f;
             nextInitialGroundProbe = Time.unscaledTime;
@@ -93,6 +113,9 @@ namespace MeixiEcho
             meleeLungeTimer = 0f;
             meleeAttackArmed = false;
             meleeImpactResolved = true;
+            meleeInputBuffered = false;
+            meleeComboStep = 0;
+            meleeComboExpiresAt = -1f;
             horizontalVelocity = Vector3.zero;
             horizontalSmoothVelocity = Vector3.zero;
             wasDashing = false;
@@ -159,7 +182,7 @@ namespace MeixiEcho
                     horizontalSmoothVelocity = Vector3.zero;
                     Debug.Log($"[MeixiSpatial] Melee impact player={transform.position} target={game.CombatTargetPosition}");
                     Vector3 strikeOrigin = transform.position + transform.forward * 0.72f + Vector3.up * 0.92f;
-                    game.ResolvePlayerMelee(strikeOrigin, transform.forward);
+                    game.ResolvePlayerMelee(strikeOrigin, transform.forward, meleeComboStep);
                     meleeAttackArmed = false;
                 }
             }
@@ -200,6 +223,11 @@ namespace MeixiEcho
             if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) x += 1f;
             if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) z -= 1f;
             if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) z += 1f;
+            if (Time.unscaledTime < validationMoveUntil)
+            {
+                x = validationMoveInput.x;
+                z = validationMoveInput.y;
+            }
 
             Vector3 input = Vector3.ClampMagnitude(new Vector3(x, 0f, z), 1f);
             Vector3 forward = orbitCamera != null ? orbitCamera.FlatForward : Vector3.forward;
@@ -211,12 +239,6 @@ namespace MeixiEcho
             {
                 lastMove = requestedMove;
                 FaceDirection(requestedMove, false);
-                footstepTimer -= Time.deltaTime;
-                if (IsGroundedStable() && footstepTimer <= 0f)
-                {
-                    footstepTimer = dashTimer > 0f ? 0.14f : 0.34f;
-                    game.SpawnFootstep(transform.position);
-                }
             }
 
             if (IsGroundedStable())
@@ -233,9 +255,32 @@ namespace MeixiEcho
                 verticalVelocity += Physics.gravity.y * 2.25f * Time.deltaTime;
             }
 
-            bool dodgePressed = game.ChapterOneCombatActive
-                ? keyboard.spaceKey.wasPressedThisFrame
-                : keyboard.leftShiftKey.wasPressedThisFrame || keyboard.rightShiftKey.wasPressedThisFrame || keyboard.qKey.wasPressedThisFrame;
+            Mouse mouse = Mouse.current;
+            bool combatInputRouted = game.ChapterOneCombatActive;
+            bool combatJPressed = keyboard.jKey.wasPressedThisFrame || (mouse != null && mouse.leftButton.wasPressedThisFrame);
+            bool combatKPressed = keyboard.kKey.wasPressedThisFrame || (mouse != null && mouse.rightButton.wasPressedThisFrame);
+            bool combatSpacePressed = keyboard.spaceKey.wasPressedThisFrame;
+            bool combatJHeld = keyboard.jKey.isPressed || (mouse != null && mouse.leftButton.isPressed);
+            bool combatKHeld = keyboard.kKey.isPressed || (mouse != null && mouse.rightButton.isPressed);
+            bool combatSpaceHeld = keyboard.spaceKey.isPressed;
+            // Q/E are combat-only left-hand inputs. Before phase three they
+            // are deliberately not sampled, so early exploration presses can
+            // never leak into a later rhythm cue.
+            bool leftHandCombatEnabled = combatInputRouted && game.LeftHandCombatInputEnabled;
+            bool combatQPressed = leftHandCombatEnabled && keyboard.qKey.wasPressedThisFrame;
+            bool combatEPressed = leftHandCombatEnabled && keyboard.eKey.wasPressedThisFrame;
+            bool combatQHeld = leftHandCombatEnabled && keyboard.qKey.isPressed;
+            bool combatEHeld = leftHandCombatEnabled && keyboard.eKey.isPressed;
+            bool combatQReleased = leftHandCombatEnabled && keyboard.qKey.wasReleasedThisFrame;
+            bool combatEReleased = leftHandCombatEnabled && keyboard.eKey.wasReleasedThisFrame;
+            if (combatInputRouted)
+                game.ProcessChapterOneCombatInput(this, combatJPressed, combatKPressed, combatSpacePressed,
+                    combatJHeld, combatKHeld, combatSpaceHeld, combatQPressed, combatEPressed,
+                    combatQHeld, combatEHeld, combatQReleased, combatEReleased);
+
+            // Dodge is a battle action only. Exploration keeps movement and
+            // interaction simple; Q must not introduce an early dash tutorial.
+            bool dodgePressed = false;
             if (dodgePressed && dashCooldown <= 0f)
             {
                 if (game.ChapterOneCombatActive)
@@ -317,9 +362,27 @@ namespace MeixiEcho
             // velocity. A second ground move every frame caused visible micro-stops.
             if (verticalVelocity <= 0f && !controller.isGrounded) StickToGround();
 
-            Mouse mouse = Mouse.current;
-            bool lightStrike = keyboard.jKey.wasPressedThisFrame || (mouse != null && mouse.leftButton.wasPressedThisFrame);
-            bool heavyStrike = keyboard.kKey.wasPressedThisFrame || (mouse != null && mouse.rightButton.wasPressedThisFrame);
+            // J/K (and their mouse equivalents) belong exclusively to the chapter-one
+            // rhythm encounter. Keeping the gate at the raw-input boundary guarantees
+            // that an early press cannot start an animation, consume a cooldown, lunge,
+            // or spawn a pulse before the creek battle has actually begun.
+            bool combatInputEnabled = game.ChapterOneCombatActive;
+            bool rawLightStrike = combatInputEnabled && false;
+            bool heavyStrike = combatInputEnabled && false;
+            bool lightStrike = rawLightStrike;
+            if (game.ChapterOneCombatActive && rawLightStrike && attackCooldown > 0f)
+            {
+                // Accept a late press near the end of the current strike. This small
+                // deterministic buffer prevents rapid J taps from being lost between
+                // frames without allowing the player to mash through enemy threats.
+                if (attackCooldown <= 0.20f) meleeInputBuffered = true;
+                lightStrike = false;
+            }
+            if (game.ChapterOneCombatActive && !lightStrike && meleeInputBuffered && attackCooldown <= 0f)
+            {
+                lightStrike = true;
+                meleeInputBuffered = false;
+            }
             if (lightStrike && attackCooldown <= 0f)
             {
                 if (game.ChapterOneCombatActive)
@@ -329,28 +392,35 @@ namespace MeixiEcho
                         meleeAttackArmed = false;
                         meleeImpactResolved = true;
                         meleeLungeTimer = 0f;
+                        meleeInputBuffered = false;
+                        meleeComboStep = 0;
+                        meleeComboExpiresAt = -1f;
                         attackCooldown = 0.58f;
                         actionLockTimer = 0.38f;
                         horizontalVelocity = Vector3.zero;
                         horizontalSmoothVelocity = Vector3.zero;
                         return;
                     }
+                    meleeComboStep = Time.unscaledTime <= meleeComboExpiresAt
+                        ? (meleeComboStep + 1) % 3
+                        : 0;
+                    meleeComboExpiresAt = Time.unscaledTime + (meleeComboStep == 2 ? 0.92f : 0.72f);
                     meleeAttackArmed = game.TryStartMeleeLunge(transform.position, out meleeDirection);
                     meleeLungeLogged = false;
                     meleeImpactResolved = !meleeAttackArmed;
-                    meleeImpactTimer = 0.20f;
-                    meleeLungeTimer = meleeAttackArmed ? 0.25f : 0.18f;
+                    meleeImpactTimer = meleeComboStep switch { 1 => 0.17f, 2 => 0.22f, _ => 0.19f };
+                    meleeLungeTimer = meleeAttackArmed ? (meleeComboStep == 2 ? 0.29f : 0.25f) : 0.18f;
                     if (meleeDirection.sqrMagnitude > 0.01f)
                     {
                         FaceDirection(meleeDirection, true);
                         lastMove = transform.forward;
                     }
-                    attackCooldown = 0.44f;
-                    actionLockTimer = 0.30f;
+                    attackCooldown = meleeComboStep == 2 ? 0.48f : 0.36f;
+                    actionLockTimer = meleeComboStep == 2 ? 0.40f : 0.27f;
                     if (meleeAttackArmed)
                     {
                         SetAnimatorTrigger(lightHash);
-                        if (!animatorReady) fallbackPose?.TriggerLight();
+                        if (!animatorReady) fallbackPose?.TriggerLightCombo(meleeComboStep);
                     }
                     return;
                 }
@@ -392,8 +462,10 @@ namespace MeixiEcho
             animationPreviewStarted = Time.time;
             previewLightTriggered = false;
             previewHeavyTriggered = false;
+            previewLocomotionLogged = false;
             verticalVelocity = -1.6f;
             transform.forward = new Vector3(0.72f, 0f, 0.69f).normalized;
+            Debug.Log($"[MeixiAnimationPreview] Started player={name} animatorReady={animatorReady} controller={animator?.runtimeAnimatorController?.name}");
         }
 
         private void UpdateAnimationPreview()
@@ -402,7 +474,7 @@ namespace MeixiEcho
             bool grounded = IsGroundedStable();
             verticalVelocity = grounded ? -1.6f : Mathf.Max(verticalVelocity + Physics.gravity.y * 2.25f * Time.deltaTime, -24f);
 
-            if (elapsed < 0.88f)
+            if (elapsed < 1.65f)
             {
                 // 自动走两步，确保迈腿、屈膝、摆臂和重心起伏能被独立验收。
                 Vector3 previewMove = transform.forward * 1.45f;
@@ -411,6 +483,14 @@ namespace MeixiEcho
                 StickToGround();
                 SetAnimatorFloat(speedHash, 0.58f);
                 SetAnimatorBool(groundedHash, grounded);
+                if (!previewLocomotionLogged && elapsed >= .25f)
+                {
+                    previewLocomotionLogged = true;
+                    AnimatorStateInfo state = animator != null && animator.layerCount > 0
+                        ? animator.GetCurrentAnimatorStateInfo(0) : default;
+                    Debug.Log($"[MeixiAnimationPreview] Walking speed={animator?.GetFloat(speedHash):F3} " +
+                              $"state={state.shortNameHash} normalized={state.normalizedTime:F3} position={transform.position}");
+                }
                 if (!animatorReady) fallbackPose?.SetLocomotion(0.92f, 0f);
                 UpdateVisualMotion(0.92f, 0f);
                 return;
@@ -423,14 +503,14 @@ namespace MeixiEcho
             if (!animatorReady) fallbackPose?.SetLocomotion(0f, 0f);
             UpdateVisualMotion(0f, 0f);
 
-            if (!previewLightTriggered && elapsed >= 0.98f)
+            if (!previewLightTriggered && elapsed >= 1.78f)
             {
                 previewLightTriggered = true;
                 SetAnimatorTrigger(lightHash);
                 if (!animatorReady) fallbackPose?.TriggerLight();
             }
 
-            if (!previewHeavyTriggered && elapsed >= 1.48f)
+            if (!previewHeavyTriggered && elapsed >= 2.28f)
             {
                 previewHeavyTriggered = true;
                 SetAnimatorTrigger(heavyHash);
@@ -532,6 +612,12 @@ namespace MeixiEcho
 
         public void TriggerHitReaction(Vector3 source)
         {
+            meleeInputBuffered = false;
+            meleeComboStep = 0;
+            meleeComboExpiresAt = -1f;
+            meleeAttackArmed = false;
+            meleeImpactResolved = true;
+            meleeLungeTimer = 0f;
             SetAnimatorTrigger(hitHash);
             if (!animatorReady) fallbackPose?.TriggerHit();
             Vector3 away = transform.position - source;
@@ -546,7 +632,7 @@ namespace MeixiEcho
 
         public void TriggerFinalStrike(CombatBeatAction action)
         {
-            actionLockTimer = 2.10f;
+            actionLockTimer = 3.20f;
             horizontalVelocity = Vector3.zero;
             horizontalSmoothVelocity = Vector3.zero;
             Vector3 targetDirection = game.CombatTargetPosition - transform.position;
@@ -554,17 +640,9 @@ namespace MeixiEcho
             if (targetDirection.sqrMagnitude > 0.01f)
             {
                 FaceDirection(targetDirection, true);
-                lastMove = transform.forward;
-                // Pull the hero into a readable cinematic distance before the final pose.
-                // CharacterController.Move keeps the lunge collision-aware and prevents
-                // the close-up camera from framing only the enemy/effect ribbon.
-                float targetDistance = targetDirection.magnitude;
-                if (controller != null && controller.enabled && targetDistance > 2.55f)
-                {
-                    float advance = Mathf.Min(targetDistance - 2.35f, 1.85f);
-                    controller.Move(targetDirection.normalized * advance);
-                }
+                lastMove = targetDirection.normalized;
             }
+            if (visual != null) visual.localRotation = visualBaseRotation;
             bool heavy = action == CombatBeatAction.AttackTwo;
             if (fallbackPose != null)
             {
@@ -584,10 +662,45 @@ namespace MeixiEcho
             if (!finisherProceduralActive) SetAnimatorTrigger(heavy ? heavyHash : lightHash);
         }
 
+        public float AdvanceFinalStrikeTowards(Vector3 targetPosition, float stoppingDistance, float speed)
+        {
+            actionLockTimer = Mathf.Max(actionLockTimer, .45f);
+            horizontalVelocity = Vector3.zero;
+            horizontalSmoothVelocity = Vector3.zero;
+            Vector3 delta = targetPosition - transform.position;
+            delta.y = 0f;
+            float distance = delta.magnitude;
+            if (distance <= .001f) return distance;
+
+            Vector3 direction = delta / distance;
+            FaceDirection(direction, true);
+            lastMove = direction;
+            if (visual != null)
+            {
+                visual.localPosition = Vector3.Lerp(visual.localPosition, visualBasePosition,
+                    1f - Mathf.Exp(-24f * Time.unscaledDeltaTime));
+                visual.localRotation = Quaternion.Slerp(visual.localRotation, visualBaseRotation,
+                    1f - Mathf.Exp(-28f * Time.unscaledDeltaTime));
+            }
+            float travel = Mathf.Min(Mathf.Max(0f, distance - stoppingDistance),
+                Mathf.Max(0f, speed) * Time.unscaledDeltaTime);
+            if (travel > .0001f && controller != null && controller.enabled)
+                controller.Move(direction * travel);
+            return Mathf.Max(stoppingDistance, distance - travel);
+        }
+
+        public void LockFinalStrikeFacing(Vector3 targetPosition)
+        {
+            Vector3 direction = targetPosition - transform.position;
+            direction.y = 0f;
+            if (direction.sqrMagnitude > .001f) FaceDirection(direction, true);
+            if (visual != null) visual.localRotation = visualBaseRotation;
+        }
+
         public void TriggerFinalStrikeImpact(CombatBeatAction action)
         {
             bool heavy = action == CombatBeatAction.AttackTwo;
-            if (finisherProceduralActive) fallbackPose?.TriggerFinisher(heavy);
+            if (finisherProceduralActive) fallbackPose?.TriggerFinisherImpact(heavy);
             else SetAnimatorTrigger(heavy ? heavyHash : lightHash);
         }
 
@@ -604,6 +717,7 @@ namespace MeixiEcho
             if (!finisherAnimationActive || animator == null) return;
             animator.updateMode = finisherPreviousUpdateMode;
             finisherAnimationActive = false;
+            if (visual != null) visual.localRotation = visualBaseRotation;
         }
 
         public void TriggerCombatActionForValidation(CombatBeatAction action)
@@ -648,6 +762,8 @@ namespace MeixiEcho
                 return;
             }
             meleeAttackArmed = game.TryStartMeleeLunge(transform.position, out meleeDirection);
+            meleeComboStep = 0;
+            meleeComboExpiresAt = Time.unscaledTime + 0.72f;
             meleeLungeLogged = false;
             meleeImpactResolved = !meleeAttackArmed;
             meleeImpactTimer = 0.20f;
@@ -655,8 +771,75 @@ namespace MeixiEcho
             if (meleeAttackArmed)
             {
                 SetAnimatorTrigger(lightHash);
-                if (!animatorReady) fallbackPose?.TriggerLight();
+                if (!animatorReady) fallbackPose?.TriggerLightCombo(meleeComboStep);
             }
+        }
+
+        /// <summary>
+        /// Executes a beat-map command as one authoritative 3D action. Input is
+        /// validated by MeixiGame3D first; this method only handles movement,
+        /// animation pose and the collision-aligned impact point.
+        /// </summary>
+        public bool ExecuteAuthoredRhythmAction(CombatBeatAction action, CombatInputKey stepKey, int stepIndex)
+        {
+            if (!game.ChapterOneCombatActive || controller == null) return false;
+            Vector3 origin = transform.position;
+            Vector3 targetDelta = game.CombatTargetPosition - origin;
+            targetDelta.y = 0f;
+            if (targetDelta.sqrMagnitude > 0.01f)
+            {
+                FaceDirection(targetDelta, true);
+                lastMove = transform.forward;
+            }
+            if (!game.TryGetAuthoredRhythmMove(action, stepKey, stepIndex, origin, out Vector3 destination)) return false;
+
+            bool moved = Vector3.ProjectOnPlane(destination - origin, Vector3.up).sqrMagnitude > 0.01f;
+            if (moved)
+            {
+                bool wasEnabled = controller.enabled;
+                bool phaseThrough = action == CombatBeatAction.TripleJ;
+                if (phaseThrough)
+                {
+                    if (wasEnabled) controller.enabled = false;
+                    transform.position = destination;
+                    if (wasEnabled) controller.enabled = true;
+                }
+                else
+                {
+                    if (!wasEnabled) controller.enabled = true;
+                    controller.Move(destination - origin);
+                    if (!wasEnabled) controller.enabled = false;
+                }
+                transform.position = new Vector3(transform.position.x, origin.y, transform.position.z);
+            }
+            actionLockTimer = action == CombatBeatAction.JDodgeStrike ? 0.48f : action == CombatBeatAction.Dodge ? 0.24f : 0.30f;
+            horizontalVelocity = Vector3.zero;
+            horizontalSmoothVelocity = Vector3.zero;
+
+            bool dodgePose = action == CombatBeatAction.Dodge || action == CombatBeatAction.JDodgeStrike || action == CombatBeatAction.KDodgeTripleArc;
+            bool heavyPose = action == CombatBeatAction.AttackTwo || action == CombatBeatAction.KDodgeTripleArc ||
+                             action == CombatBeatAction.JKWave || action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff || stepKey == CombatInputKey.K;
+            if (dodgePose)
+            {
+                SetAnimatorTrigger(dodgeHash);
+                if (!animatorReady) fallbackPose?.TriggerDodge();
+            }
+            if (heavyPose)
+            {
+                SetAnimatorTrigger(heavyHash);
+                if (!animatorReady) fallbackPose?.TriggerHeavy();
+            }
+            else
+            {
+                SetAnimatorTrigger(lightHash);
+                if (!animatorReady) fallbackPose?.TriggerLightCombo(Mathf.Clamp(stepIndex, 0, 2));
+            }
+
+            Vector3 strikeForward = Vector3.ProjectOnPlane(game.CombatTargetPosition - transform.position, Vector3.up);
+            if (strikeForward.sqrMagnitude < 0.01f) strikeForward = transform.forward;
+            strikeForward.Normalize();
+            transform.forward = strikeForward;
+            return game.ResolveAuthoredRhythmImpact(action, stepKey, stepIndex, origin, transform.position, strikeForward);
         }
 
         private void SetAnimatorTrigger(int hash)
@@ -702,13 +885,10 @@ namespace MeixiEcho
 
                 animator.applyRootMotion = false;
                 animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                // Standard Assets and KayKit use different Humanoid bind-pose conventions.
-                // Keep the more detailed Standard Assets body on the procedural motion layer
-                // so the first frame, walking and combat never fall back to a T-pose.
-                bool useProceduralBody = animator.avatar != null &&
-                                         animator.avatar.name.IndexOf("DefaultMale", System.StringComparison.OrdinalIgnoreCase) >= 0;
-                if (useProceduralBody) animator.enabled = false;
-                else if (animator.runtimeAnimatorController != null && !animator.enabled) animator.enabled = true;
+                // Both character assets are Humanoid rigs. Let Unity retarget the same
+                // controller to the higher-detail body so locomotion and combat retain
+                // their authored timing instead of showing a procedural T-pose.
+                if (animator.runtimeAnimatorController != null && !animator.enabled) animator.enabled = true;
             }
 
             bool readyNow = animator != null && animator.enabled && animator.runtimeAnimatorController != null &&
@@ -740,6 +920,282 @@ namespace MeixiEcho
 
             boundAnimatorController = currentController;
             boundAvatar = currentAvatar;
+        }
+    }
+
+    /// <summary>
+    /// Kept only so older baked scenes deserialize without a missing script.
+    /// Humanoid animation is now the sole owner of arm bones: post-animation bone
+    /// overrides caused shoulder snapping, forearm roll and asymmetric walk cycles.
+    /// </summary>
+    public sealed class NaturalArmSwingCorrection : MonoBehaviour
+    {
+        private void Awake()
+        {
+            enabled = false;
+        }
+    }
+
+    /// <summary>
+    /// Keeps authored full-body locomotion intact, then adds restrained head tracking
+    /// and a continuous down-hanging arm baseline with opposite-phase walking swing.
+    /// </summary>
+    [DefaultExecutionOrder(80)]
+    [DisallowMultipleComponent]
+    public sealed class NaturalHumanoidLocomotionPolish : MonoBehaviour
+    {
+        private static readonly int SpeedHash = Animator.StringToHash("Speed");
+        private Animator animator;
+        private MeixiThirdPersonPlayer player;
+        private Transform head;
+        private Transform leftUpperArm;
+        private Transform rightUpperArm;
+        private Transform leftLowerArm;
+        private Transform rightLowerArm;
+        private Transform leftHand;
+        private Transform rightHand;
+        private Transform npcPlayerTarget;
+        private Camera viewCamera;
+        private Vector3 smoothedLookPosition;
+        private Vector3 lookVelocity;
+        private float currentLookWeight;
+        private float idleYaw;
+        private float idleYawFrom;
+        private float idleYawTo;
+        private float idleTurnStarted;
+        private float idleTurnDuration = 1.4f;
+        private float nextIdleTurn;
+        private int npcVariation = -1;
+        private bool playerControlled;
+        private float idleArmWeight;
+        private float locomotionArmBlend;
+        private float validationArmPhase = -1f;
+        private bool validationPoseLogged;
+
+        public void ConfigurePlayerCamera(Camera camera)
+        {
+            playerControlled = true;
+            viewCamera = camera;
+            npcVariation = -1;
+            idleArmWeight = .82f;
+        }
+
+        public void ConfigureNpc(int variation)
+        {
+            npcVariation = Mathf.Max(0, variation);
+            idleArmWeight = .68f;
+            ScheduleIdleTurn(true);
+        }
+
+        private void Awake()
+        {
+            string[] arguments = System.Environment.GetCommandLineArgs();
+            if (System.Array.Exists(arguments, value => string.Equals(value, "-meixiAnimationAltCapture",
+                    System.StringComparison.OrdinalIgnoreCase))) validationArmPhase = .25f;
+            else if (System.Array.Exists(arguments, value => string.Equals(value, "-meixiAnimationCapture",
+                         System.StringComparison.OrdinalIgnoreCase))) validationArmPhase = .75f;
+            BindHumanoid();
+        }
+
+        private void OnEnable()
+        {
+            BindHumanoid();
+            currentLookWeight = 0f;
+            lookVelocity = Vector3.zero;
+            ScheduleIdleTurn(true);
+        }
+
+        private void Update()
+        {
+            if (!CanReadHumanoid()) BindHumanoid();
+            if (!CanReadHumanoid()) return;
+            if (Time.unscaledTime >= nextIdleTurn) BeginIdleTurn();
+            if (idleTurnDuration > .01f && Time.unscaledTime < idleTurnStarted + idleTurnDuration)
+            {
+                float t = Mathf.Clamp01((Time.unscaledTime - idleTurnStarted) / idleTurnDuration);
+                idleYaw = Mathf.Lerp(idleYawFrom, idleYawTo, t * t * (3f - 2f * t));
+            }
+        }
+
+        private void LateUpdate()
+        {
+            if (!CanReadHumanoid()) return;
+            bool actionOwnsPose = player != null && !player.AllowsNaturalArmSwingCorrection;
+            float speed = Mathf.Clamp01(animator.GetFloat(SpeedHash));
+            float targetWeight = !actionOwnsPose ? (playerControlled ? .82f : .68f) : 0f;
+            idleArmWeight = Mathf.MoveTowards(idleArmWeight, targetWeight,
+                Time.deltaTime * (targetWeight > idleArmWeight ? 4.2f : 9.5f));
+            if (idleArmWeight <= .001f) return;
+
+            float locomotionTarget = actionOwnsPose ? 0f :
+                Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.045f, .52f, speed));
+            locomotionArmBlend = Mathf.MoveTowards(locomotionArmBlend, locomotionTarget,
+                Time.deltaTime * (locomotionTarget > locomotionArmBlend ? 3.8f : 5.2f));
+            if (validationArmPhase >= 0f && speed > .10f)
+            {
+                idleArmWeight = playerControlled ? .82f : .68f;
+                locomotionArmBlend = 1f;
+            }
+            AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
+            float normalizedPhase = validationArmPhase >= 0f && locomotionArmBlend > .05f
+                ? validationArmPhase
+                : Mathf.Repeat(state.normalizedTime + .07f, 1f);
+            float phase = normalizedPhase * Mathf.PI * 2f;
+            float stride = (Mathf.Sin(phase) + Mathf.Sin(phase * 2f) * .06f) * locomotionArmBlend;
+            float swingReach = Mathf.Lerp(.34f, .44f, speed);
+            float leftSwing = stride * swingReach;
+            float rightSwing = -leftSwing;
+
+            Vector3 down = -transform.up;
+            Vector3 forward = transform.forward;
+            Vector3 right = transform.right;
+            AimBone(leftUpperArm, leftLowerArm,
+                down + forward * (leftSwing + .018f) - right * .035f, idleArmWeight);
+            AimBone(rightUpperArm, rightLowerArm,
+                down + forward * (rightSwing + .018f) + right * .035f, idleArmWeight);
+            AimBone(leftLowerArm, leftHand,
+                down + forward * (leftSwing * .54f + .075f) - right * .012f, idleArmWeight * .46f);
+            AimBone(rightLowerArm, rightHand,
+                down + forward * (rightSwing * .54f + .075f) + right * .012f, idleArmWeight * .46f);
+            if (!validationPoseLogged && validationArmPhase >= 0f && speed > .10f)
+            {
+                validationPoseLogged = true;
+                Vector3 leftDirection = leftLowerArm != null && leftUpperArm != null
+                    ? (leftLowerArm.position - leftUpperArm.position).normalized : Vector3.zero;
+                Vector3 rightDirection = rightLowerArm != null && rightUpperArm != null
+                    ? (rightLowerArm.position - rightUpperArm.position).normalized : Vector3.zero;
+                Debug.Log($"[MeixiArmSwing] speed={speed:F3} blend={locomotionArmBlend:F3} phase={validationArmPhase:F2} " +
+                          $"weight={idleArmWeight:F3} leftForward={Vector3.Dot(leftDirection, forward):F3} " +
+                          $"rightForward={Vector3.Dot(rightDirection, forward):F3}");
+            }
+        }
+
+        private void OnAnimatorIK(int layerIndex)
+        {
+            if (layerIndex != 0 || !CanReadHumanoid()) return;
+            if (player != null && !player.AllowsNaturalArmSwingCorrection)
+            {
+                currentLookWeight = Mathf.MoveTowards(currentLookWeight, 0f, Time.deltaTime * 8f);
+                animator.SetLookAtWeight(currentLookWeight, .04f, .72f, .12f, .72f);
+                return;
+            }
+
+            float speed = Mathf.Clamp01(animator.GetFloat(SpeedHash));
+            bool moving = speed > .065f;
+            Vector3 desiredPosition = DesiredLookPosition(moving);
+            if (smoothedLookPosition == Vector3.zero) smoothedLookPosition = desiredPosition;
+            float smoothTime = moving ? .16f : .28f;
+            smoothedLookPosition = Vector3.SmoothDamp(smoothedLookPosition, desiredPosition,
+                ref lookVelocity, smoothTime, 18f, Mathf.Max(Time.deltaTime, .0001f));
+
+            float targetWeight = playerControlled ? (moving ? .66f : .34f) : NpcLookWeight();
+            currentLookWeight = Mathf.MoveTowards(currentLookWeight, targetWeight, Time.deltaTime * 2.6f);
+            animator.SetLookAtPosition(smoothedLookPosition);
+            animator.SetLookAtWeight(currentLookWeight,
+                playerControlled && moving ? .10f : .035f,
+                playerControlled ? .78f : .68f,
+                .12f,
+                playerControlled ? .70f : .78f);
+        }
+
+        private void BindHumanoid()
+        {
+            animator = GetComponent<Animator>() ?? GetComponentInChildren<Animator>(true);
+            player = GetComponentInParent<MeixiThirdPersonPlayer>();
+            if (player != null) playerControlled = true;
+            if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return;
+            head = animator.GetBoneTransform(HumanBodyBones.Head);
+            leftUpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            rightUpperArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            leftLowerArm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            rightLowerArm = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            rightHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            viewCamera = Camera.main;
+        }
+
+        private static void AimBone(Transform bone, Transform child, Vector3 desiredDirection, float weight)
+        {
+            if (bone == null || child == null || desiredDirection.sqrMagnitude < .0001f) return;
+            Vector3 currentDirection = child.position - bone.position;
+            if (currentDirection.sqrMagnitude < .0001f) return;
+            Quaternion target = Quaternion.FromToRotation(currentDirection.normalized,
+                desiredDirection.normalized) * bone.rotation;
+            bone.rotation = Quaternion.Slerp(bone.rotation, target, Mathf.Clamp01(weight));
+        }
+
+        private Vector3 DesiredLookPosition(bool moving)
+        {
+            Vector3 origin = head != null ? head.position : transform.position + transform.up * 1.6f;
+            if (playerControlled && moving)
+            {
+                if (viewCamera == null || !viewCamera.isActiveAndEnabled) viewCamera = Camera.main;
+                Vector3 cameraDirection = viewCamera != null ? viewCamera.transform.forward : transform.forward;
+                return origin + ConstrainLookDirection(cameraDirection, 58f, 25f) * 7f;
+            }
+
+            if (!playerControlled)
+            {
+                if (npcPlayerTarget == null)
+                {
+                    MeixiThirdPersonPlayer runtimePlayer = FindAnyObjectByType<MeixiThirdPersonPlayer>();
+                    if (runtimePlayer != null) npcPlayerTarget = runtimePlayer.transform;
+                }
+                if (npcPlayerTarget != null)
+                {
+                    Vector3 toPlayer = npcPlayerTarget.position + Vector3.up * 1.55f - origin;
+                    float flatDistance = new Vector2(toPlayer.x, toPlayer.z).magnitude;
+                    if (flatDistance < 7.2f && Vector3.Dot(transform.forward, toPlayer.normalized) > -.18f)
+                        return origin + ConstrainLookDirection(toPlayer.normalized, 64f, 22f) * 6f;
+                }
+            }
+
+            Vector3 idleDirection = Quaternion.AngleAxis(idleYaw, transform.up) * transform.forward;
+            return origin + idleDirection * 6f + transform.up * .03f;
+        }
+
+        private Vector3 ConstrainLookDirection(Vector3 desired, float maxYaw, float maxPitch)
+        {
+            Vector3 local = transform.InverseTransformDirection(desired.normalized);
+            float yaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -maxYaw, maxYaw);
+            float pitch = Mathf.Clamp(-Mathf.Asin(Mathf.Clamp(local.y, -1f, 1f)) * Mathf.Rad2Deg,
+                -maxPitch, maxPitch);
+            return transform.TransformDirection(Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward).normalized;
+        }
+
+        private float NpcLookWeight()
+        {
+            if (npcPlayerTarget == null) return .24f;
+            Vector3 delta = npcPlayerTarget.position - transform.position;
+            delta.y = 0f;
+            return delta.sqrMagnitude < 49f ? .56f : .24f;
+        }
+
+        private void BeginIdleTurn()
+        {
+            idleYawFrom = idleYaw;
+            float range = npcVariation switch { 0 => 8f, 1 => 15f, 2 => 11f, _ => 12f };
+            float signedNoise = Mathf.PerlinNoise(Time.unscaledTime * .073f + transform.position.x * .11f,
+                transform.position.z * .09f + npcVariation * .21f) * 2f - 1f;
+            idleYawTo = signedNoise * range;
+            idleTurnDuration = npcVariation == 0 ? 1.85f : npcVariation == 1 ? 1.15f : 1.45f;
+            idleTurnStarted = Time.unscaledTime;
+            ScheduleIdleTurn(false);
+        }
+
+        private void ScheduleIdleTurn(bool initial)
+        {
+            float seed = Mathf.Abs(transform.position.x * .17f + transform.position.z * .29f + npcVariation * .73f);
+            float pause = npcVariation switch { 0 => 6.8f, 1 => 4.2f, 2 => 5.4f, _ => 5.6f };
+            nextIdleTurn = Time.unscaledTime + (initial ? 1.2f + Mathf.Repeat(seed, 2.4f) :
+                pause + Mathf.PerlinNoise(seed, Time.unscaledTime * .031f) * 3.2f);
+        }
+
+        private bool CanReadHumanoid()
+        {
+            return animator != null && animator.enabled && animator.isActiveAndEnabled &&
+                   animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman &&
+                   animator.layerCount > 0 && head != null;
         }
     }
 
@@ -843,16 +1299,18 @@ namespace MeixiEcho
             side = lateral;
         }
 
-        public void TriggerLight() => BeginAction(1, 0.58f);
+        public void TriggerLight() => TriggerLightCombo(0);
+        public void TriggerLightCombo(int comboStep) => BeginAction(comboStep switch { 1 => 7, 2 => 8, _ => 1 }, comboStep == 2 ? 0.66f : 0.52f);
         public void TriggerHeavy() => BeginAction(2, 0.72f);
         public void TriggerDodge() => BeginAction(3, 0.34f);
         public void TriggerHit() => BeginAction(4, 0.38f);
-        public void TriggerFinisher(bool heavy) => BeginAction(heavy ? 6 : 5, 1.65f);
+        public void TriggerFinisher(bool heavy) => BeginAction(heavy ? 6 : 5, 1.80f);
+        public void TriggerFinisherImpact(bool heavy) => BeginAction(heavy ? 10 : 9, 1.80f);
 
         private void BeginAction(int nextAction, float duration)
         {
             action = nextAction;
-            actionStarted = Time.time;
+            actionStarted = Time.unscaledTime;
             actionDuration = duration;
             actionUntil = actionStarted + duration;
         }
@@ -879,9 +1337,9 @@ namespace MeixiEcho
             Quaternion rightFootTarget = rightFootBase * Quaternion.Euler(-rightKnee * 0.34f, 0f, 0f);
 
             float actionCurve = 0f;
-            if (Time.time <= actionUntil)
+            if (Time.unscaledTime <= actionUntil)
             {
-                float normalized = Mathf.Clamp01((Time.time - actionStarted) / Mathf.Max(0.01f, actionDuration));
+                float normalized = Mathf.Clamp01((Time.unscaledTime - actionStarted) / Mathf.Max(0.01f, actionDuration));
                 float curve = action >= 5
                     ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(normalized / 0.30f))
                     : Mathf.Sin(Mathf.Clamp01(normalized) * Mathf.PI);
@@ -891,6 +1349,22 @@ namespace MeixiEcho
                     rightArmTarget *= Quaternion.Euler(-92f * curve, 18f * curve, -26f * curve);
                     rightForearmTarget *= Quaternion.Euler(-58f * curve, 0f, 0f);
                     spineTarget *= Quaternion.Euler(0f, 28f * curve, 0f);
+                }
+                else if (action == 7)
+                {
+                    leftArmTarget *= Quaternion.Euler(-88f * curve, -18f * curve, 28f * curve);
+                    leftForearmTarget *= Quaternion.Euler(-62f * curve, 0f, 0f);
+                    spineTarget *= Quaternion.Euler(2f * curve, -34f * curve, -8f * curve);
+                    hipsTarget *= Quaternion.Euler(0f, -18f * curve, 0f);
+                }
+                else if (action == 8)
+                {
+                    rightArmTarget *= Quaternion.Euler(-72f * curve, 28f * curve, -42f * curve);
+                    rightForearmTarget *= Quaternion.Euler(-96f * curve, 0f, 0f);
+                    leftArmTarget *= Quaternion.Euler(-46f * curve, -12f * curve, 26f * curve);
+                    spineTarget *= Quaternion.Euler(10f * curve, 52f * curve, -10f * curve);
+                    hipsTarget *= Quaternion.Euler(8f * curve, 36f * curve, 6f * curve);
+                    leftLegTarget *= Quaternion.Euler(-34f * curve, 0f, 0f);
                 }
                 else if (action == 2)
                 {
@@ -933,6 +1407,23 @@ namespace MeixiEcho
                     leftArmTarget *= Quaternion.Euler(-66f * curve, -8f * curve, 30f * curve);
                     rightLegTarget *= Quaternion.Euler(-70f * curve, 9f * curve, 0f);
                     rightLowerLegTarget *= Quaternion.Euler(56f * curve, 0f, 0f);
+                }
+                else if (action == 9)
+                {
+                    hipsTarget *= Quaternion.Euler(8f * curve, 38f * curve, -12f * curve);
+                    spineTarget *= Quaternion.Euler(16f * curve, 62f * curve, -14f * curve);
+                    rightArmTarget *= Quaternion.Euler(-122f * curve, 36f * curve, -48f * curve);
+                    rightForearmTarget *= Quaternion.Euler(-104f * curve, 0f, 0f);
+                    leftArmTarget *= Quaternion.Euler(-52f * curve, -12f * curve, 34f * curve);
+                }
+                else if (action == 10)
+                {
+                    hipsTarget *= Quaternion.Euler(18f * curve, -30f * curve, 10f * curve);
+                    spineTarget *= Quaternion.Euler(28f * curve, -58f * curve, 16f * curve);
+                    rightLegTarget *= Quaternion.Euler(-92f * curve, 10f * curve, 0f);
+                    rightLowerLegTarget *= Quaternion.Euler(42f * curve, 0f, 0f);
+                    rightArmTarget *= Quaternion.Euler(-68f * curve, 22f * curve, -32f * curve);
+                    leftArmTarget *= Quaternion.Euler(-58f * curve, -18f * curve, 28f * curve);
                 }
             }
 
@@ -977,6 +1468,19 @@ namespace MeixiEcho
                     AimBone(rightForearm, rightHand, forward - up * 0.05f, actionCurve);
                     AimBone(leftArm, leftForearm, forward * 0.35f - up * 0.35f - right * 0.30f, actionCurve * 0.72f);
                 }
+                else if (action == 7)
+                {
+                    AimBone(leftArm, leftForearm, forward + up * 0.12f - right * 0.14f, actionCurve);
+                    AimBone(leftForearm, leftHand, forward - up * 0.02f + right * 0.08f, actionCurve);
+                    AimBone(rightArm, rightForearm, forward * 0.40f + up * 0.32f + right * 0.28f, actionCurve * 0.82f);
+                }
+                else if (action == 8)
+                {
+                    AimBone(rightArm, rightForearm, forward * 0.82f + up * 0.30f + right * 0.12f, actionCurve);
+                    AimBone(rightForearm, rightHand, forward + up * 0.04f - right * 0.08f, actionCurve);
+                    AimBone(leftArm, leftForearm, forward * 0.58f + up * 0.36f - right * 0.20f, actionCurve * 0.92f);
+                    AimBone(leftLeg, leftLowerLeg, forward * 0.46f - up * 0.72f, actionCurve * 0.78f);
+                }
                 else if (action == 2)
                 {
                     // 前踢：大腿抬起、膝部送前、脚尖略向下，同时双臂形成护架。
@@ -1003,6 +1507,19 @@ namespace MeixiEcho
                     AimBone(rightLeg, rightLowerLeg, forward * 0.74f + up * 0.40f, actionCurve * 0.92f);
                     AimBone(rightLowerLeg, rightFoot, forward * 0.86f - up * 0.30f, actionCurve * 0.90f);
                 }
+                else if (action == 9)
+                {
+                    AimBone(rightArm, rightForearm, forward + up * 0.06f + right * 0.08f, actionCurve);
+                    AimBone(rightForearm, rightHand, forward - up * 0.10f, actionCurve);
+                    AimBone(leftArm, leftForearm, forward * 0.46f + up * 0.32f - right * 0.26f, actionCurve * 0.90f);
+                }
+                else if (action == 10)
+                {
+                    AimBone(rightLeg, rightLowerLeg, forward * 0.94f + up * 0.42f, actionCurve);
+                    AimBone(rightLowerLeg, rightFoot, forward - up * 0.18f, actionCurve);
+                    AimBone(rightArm, rightForearm, forward * 0.62f + up * 0.42f + right * 0.18f, actionCurve * 0.88f);
+                    AimBone(leftArm, leftForearm, forward * 0.58f + up * 0.38f - right * 0.18f, actionCurve * 0.88f);
+                }
             }
             else if (locomotion <= 0.03f)
             {
@@ -1017,7 +1534,7 @@ namespace MeixiEcho
             if (hips != null)
             {
                 float bob = Mathf.Abs(stride) * 0.018f * locomotion;
-                hips.localPosition = Vector3.Lerp(hips.localPosition, hipsBasePosition + Vector3.up * bob, 1f - Mathf.Exp(-18f * Time.deltaTime));
+                hips.localPosition = Vector3.Lerp(hips.localPosition, hipsBasePosition + Vector3.up * bob, 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime));
             }
         }
 
@@ -1053,7 +1570,7 @@ namespace MeixiEcho
 
         private static void Apply(Transform bone, Quaternion target)
         {
-            if (bone != null) bone.localRotation = Quaternion.Slerp(bone.localRotation, target, 1f - Mathf.Exp(-18f * Time.deltaTime));
+            if (bone != null) bone.localRotation = Quaternion.Slerp(bone.localRotation, target, 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime));
         }
     }
 
@@ -1225,6 +1742,22 @@ namespace MeixiEcho
             cameraShake = perfect ? 0.13f : 0.07f;
         }
 
+        public void TriggerMeleeImpact(int comboStep, bool perfect)
+        {
+            comboStep = Mathf.Clamp(comboStep, 0, 2);
+            // Keep the normal duel framing stable for the first two strikes. The
+            // third hit receives a small lateral accent instead of a hard camera cut.
+            if (combatTarget != null)
+            {
+                Vector3 line = combatTarget.position - target.position;
+                float heading = Mathf.Atan2(line.x, line.z) * Mathf.Rad2Deg;
+                rhythmYaw = heading + (comboStep == 1 ? 22f : comboStep == 2 ? 38f : 30f);
+                rhythmPitch = comboStep == 2 ? 13f : 16f;
+            }
+            focusPunch = (perfect ? 6.2f : 3.2f) + comboStep * 1.2f;
+            cameraShake = (perfect ? 0.08f : 0.045f) + comboStep * 0.025f;
+        }
+
         public void EndCombatFocus()
         {
             combatFocus = false;
@@ -1304,12 +1837,29 @@ namespace MeixiEcho
 
         public void BeginAnimationPreviewFocus()
         {
+            if (target == null)
+            {
+                MeixiThirdPersonPlayer scenePlayer = FindAnyObjectByType<MeixiThirdPersonPlayer>();
+                if (scenePlayer != null) Configure(scenePlayer.transform);
+            }
             openingShot = false;
             rhythmFocus = false;
             combatFocus = false;
             combatTarget = null;
             animationPreviewFocus = true;
             velocity = Vector3.zero;
+            if (target != null)
+            {
+                // Capture validation must start on the character immediately. A
+                // synchronous standalone screenshot can otherwise preserve the baked
+                // overview-camera transform before its first visible LateUpdate.
+                Vector3 previewPivot = target.position + Vector3.up * 1.02f;
+                transform.position = previewPivot + target.right * 3.65f + target.forward * 1.35f + Vector3.up * .92f;
+                transform.rotation = Quaternion.LookRotation(previewPivot - transform.position, Vector3.up);
+                if (cameraComponent != null) cameraComponent.fieldOfView = 44f;
+                smoothedTargetPosition = target.position;
+                hasSmoothedTargetPosition = true;
+            }
         }
 
         public void TriggerRhythmCut(int actionIndex, bool perfect)
@@ -1555,13 +2105,15 @@ namespace MeixiEcho
 
             if (finisherStage == 0)
             {
-                // 蓄力特写：镜头从主角肩侧缓慢推近，同时保留敌人在景深方向中。
-                float dolly = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(stageAge / 0.34f));
-                pivot = playerPosition + Vector3.up * 1.22f + line * Mathf.Lerp(0.34f, 0.66f, dolly);
-                desired = playerPosition - line * Mathf.Lerp(1.35f, 0.92f, dolly) + side * Mathf.Lerp(2.45f, 1.82f, dolly) + Vector3.up * 1.54f;
-                fov = Mathf.Lerp(39f, 31f, dolly);
-                roll = -finisherSide * 2.8f;
-                responsiveness = 12f;
+                // 追击镜头：稳定跟在主角斜后方，随主角沿攻击轴向敌人推进。
+                // 不切换攻击轴侧面，避免镜头运动被误读成人物异常旋转。
+                float dolly = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(stageAge / .62f));
+                pivot = Vector3.Lerp(playerPosition, enemyPosition, .38f) + Vector3.up * 1.16f;
+                desired = playerPosition - line * Mathf.Lerp(3.35f, 2.55f, dolly) +
+                          side * Mathf.Lerp(1.30f, .88f, dolly) + Vector3.up * 1.62f;
+                fov = Mathf.Lerp(46f, 38f, dolly);
+                roll = -finisherSide * .55f;
+                responsiveness = 15f;
             }
             else if (finisherStage == 1)
             {

@@ -1,0 +1,60 @@
+name: Bug 报告
+description: 报告可复现的游戏、构建或网站问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: 感谢反馈。请不要上传包含个人存档、账号信息或授权受限素材的文件。
+  - type: input
+    id: version
+    attributes:
+      label: 游戏版本
+      placeholder: 例如 v0.9.3
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题区域
+      options:
+        - 标题、存档或设置
+        - 第一章探索
+        - 第一章战斗
+        - 第二章舞台
+        - Windows 构建或安装
+        - 宣发网站
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按发生顺序列出操作。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 系统环境
+      placeholder: Windows 11 23H2、1920×1080、键鼠
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志、截图或录像
+      description: 可拖入文件；发布前请移除隐私信息。
+

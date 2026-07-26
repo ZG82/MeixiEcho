@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -9,6 +10,7 @@ using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
+using UnityEngine.Networking;
 
 namespace MeixiEcho
 {
@@ -17,7 +19,23 @@ namespace MeixiEcho
         None,
         AttackOne,
         AttackTwo,
-        Dodge
+        Dodge,
+        JKWave,
+        JDodgeStrike,
+        KDodgeTripleArc,
+        TripleJ,
+        JKRiff,
+        KJKRiff
+    }
+
+    public enum CombatInputKey
+    {
+        None,
+        J,
+        K,
+        Space,
+        Q,
+        E
     }
 
     public sealed class MeixiGame3D : MonoBehaviour
@@ -40,11 +58,10 @@ namespace MeixiEcho
         {
             new[]
             {
-                "林默｜采样器捕捉到重复声纹，可这条溪明明已经沉默。",
-                "老村长｜孩子们曾经每天听着泉水醒来。你若听得见，就替梅溪把它找回来。",
-                "林默｜我只能分析频率，不会唱歌。它为什么会回应我？",
-                "老村长｜先别急着分析。水记得脚步，石桥也记得谁曾从这里回家。",
-                "系统｜失调溪灵正在吞噬水声。红色区域会追踪你的落点；瞬身脱离后，用近战突进或远程音符波击破三段声纹。"
+                "系统｜检测到可收集魂音。",
+                "系统｜需要在恰当的时机和位置，按下正确的按键完成相应的音乐节拍。",
+                "系统｜全部节拍完成后，即可获取“魂音”。",
+                "林默｜原来那个发光的东西，就是村民所说的魂音……"
             }
         };
 
@@ -62,6 +79,8 @@ namespace MeixiEcho
         };
 
         private Font uiFont;
+        private Font displayFont;
+        private Font diaryFont;
         private Material earth;
         private Material grass;
         private Material stone;
@@ -84,21 +103,69 @@ namespace MeixiEcho
         private AudioClip highTone;
         private AudioClip successTone;
         private AudioClip rhythmSong;
+        private AudioClip chapterOneExplorationMusic;
         private AudioClip chapterOneMusic;
+        private AudioClip chapterOnePhaseThreeMusic;
         private Canvas canvas;
         private GameObject titlePanel;
+        private MeixiTitleScreenFx titleScreenFx;
+        private Button titlePrimaryButton;
+        private Button titleNewJourneyButton;
+        private Button titleContinueButton;
+        private Button titleDeleteSaveButton;
+        private CanvasGroup titleSaveMenuGroup;
+        private Text titleSaveSummaryText;
+        private GameObject titleDeleteConfirmPanel;
+        private Text titleConfirmationTitleText;
+        private Text titleConfirmationBodyText;
+        private Button titleConfirmationAcceptButton;
+        private Action pendingTitleConfirmation;
         private GameObject hudPanel;
         private GameObject dialoguePanel;
         private GameObject rhythmPanel;
         private GameObject chapterPanel;
         private GameObject endingPanel;
         private GameObject pausePanel;
+        private GameObject pauseSettingsPanel;
+        private bool pauseSettingsOpen;
+        private Button pauseResumeButton;
+        private Button pauseSettingsButton;
+        private Button pauseRestartButton;
+        private Button pauseQuitButton;
+        private Button pauseSettingsBackButton;
+        private Button pauseVolumeDownButton;
+        private Button pauseVolumeUpButton;
+        private Button pauseTerminalButton;
+        private GameObject terminalPanel;
+        private InputField terminalInput;
+        private Text terminalOutput;
+        private Button terminalSubmitButton;
+        private Button terminalCloseButton;
+        private bool terminalCommandExecuting;
+        private double pauseStartedDsp;
+        private Text pausePracticeText;
+        private Text settingsVolumeText;
+        private Text settingsAchievementCountText;
+        private Text settingsAchievementListText;
         private GameObject interactionCard;
         private GameObject openingPanel;
         private GameObject loadingPanel;
+        private GameObject transitionPanel;
+        private CanvasGroup transitionGroup;
+        private Text transitionCaption;
+        private Coroutine sceneTransitionRoutine;
+        private bool sceneTransitionActive;
+        private bool chapterCardTransitionPending;
         private Text chapterHudText;
         private Text objectiveText;
         private Text healthText;
+        private RectTransform healthCardRect;
+        private readonly Image[] healthBarSegments = new Image[5];
+        private Image healthBarGlow;
+        private Text healthDeltaText;
+        private CanvasGroup healthFxGroup;
+        private Coroutine healthFxRoutine;
+        private int displayedHealth = 5;
         private Text soulCountText;
         private Text interactionText;
         private Text interactionTitle;
@@ -108,9 +175,17 @@ namespace MeixiEcho
         private Text dialogueText;
         private Text dialogueRole;
         private Text dialogueCounter;
-        private Text dialoguePortraitGlyph;
+        private Text storyProgressText;
+        private Text archiveProgressText;
         private Image dialoguePortraitPlate;
+        private Image dialoguePortraitImage;
+        private Sprite npcDialoguePortraitSprite;
+        private Sprite childDialoguePortraitSprite;
+        private Sprite auntDialoguePortraitSprite;
+        private Sprite playerDialoguePortraitSprite;
         private Text toastText;
+        private GameObject toastPanel;
+        private ToastBannerFx toastBannerFx;
         private Text chapterCardNumber;
         private Text chapterCardTitle;
         private Text chapterCardSubtitle;
@@ -125,6 +200,36 @@ namespace MeixiEcho
         private Image rhythmFlash;
         private Text combatActionKey;
         private Text combatActionName;
+        private Image combatEnemyHealthFill;
+        private Image combatEnemyHealthChipFill;
+        private GameObject leftHandCuePlate;
+        private GameObject rightHandCuePlate;
+        private Image leftHandRhythmFlash;
+        private Image leftHandHoldHalo;
+        private Image leftHandHoldProgressFill;
+        private Text leftHandActionKey;
+        private Text leftHandActionName;
+        private readonly Image[] leftHandHoldRingSegments = new Image[28];
+        private readonly Image[] combatPhaseSegments = new Image[3];
+        private Text combatPhaseLabel;
+        private GameObject combatPhaseBanner;
+        private CanvasGroup combatPhaseBannerGroup;
+        private Text combatPhaseBannerText;
+        private GameObject defeatPanel;
+        private Button defeatRetryButton;
+        private Button defeatQuitButton;
+        private Text defeatSummaryText;
+        private GameObject gameplayGuidePanel;
+        private Text gameplayGuideTitle;
+        private Text gameplayGuideSubtitle;
+        private Text gameplayGuideBody;
+        private Button gameplayGuideContinueButton;
+        private bool gameplayGuideOpen;
+        private bool explorationGuideShown;
+        private bool battleGuideShown;
+        private Action gameplayGuideCallback;
+        private float gameplayGuidePreviousTimeScale = 1f;
+        private bool gameplayGuidePreviousAudioPause;
         private Sprite beatSigilSprite;
         private Texture2D finalSlashTexture;
         private readonly List<SoulNode3D> nodes = new();
@@ -162,6 +267,8 @@ namespace MeixiEcho
         private float heavyChargeStarted;
         private bool captureMode;
         private bool captureDone;
+        private bool titleCaptureWhenReady;
+        private bool openingCaptureWhenReady;
         private float captureAt;
         private string captureFileName = "MeixiCapture.png";
         private bool rhythmAutoValidation;
@@ -171,6 +278,14 @@ namespace MeixiEcho
         private bool wrongMeleeValidation;
         private bool autoActionIssuedForBeat;
         private bool openingActive;
+        private int openingDiaryPage;
+        private float openingPageStartedAt;
+        private float openingPageUntil;
+        private CanvasGroup openingPaperGroup;
+        private Text openingDiaryDate;
+        private Text openingDiaryTitle;
+        private Text openingDiaryBody;
+        private Text openingDiaryPageText;
         private bool secondChapterLoading;
         private bool secondChapterRouteActive;
         private float nextRouteIntegrityCheckAt;
@@ -179,9 +294,52 @@ namespace MeixiEcho
         private float chapterOneCombatBpm = 92f;
         private double chapterOneBeatStart;
         private float chapterOneBeatPulse;
-        private const float CombatInputWindow = 0.19f;
+        private const float CombatInputWindow = 0.235f;
+        private const float CombatChordWindow = 0.145f;
+        private const float CombatSequenceMaxGap = 0.34f;
+        private const float CombatSequenceStepSpacing = 0.19f;
+        private const double CombatSequenceStepTolerance = 0.28d;
+        private const double CombatHoldEarlyBuffer = 0.16d;
+        private const double CombatPhaseRestSeconds = 1.80d;
+        // Phase three's dual-hand score was already widened to 125% of the
+        // chapter baseline. Give both voices another 40% reaction allowance:
+        // 1.25 * 1.40 = 1.75. Phases one and two still use the untouched 1.00 path.
+        private const float PhaseThreeJudgementScale = 1.75f;
+        private float CurrentCombatInputWindow => CombatInputWindow *
+            (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
+        private float CurrentCombatChordWindow => CombatChordWindow *
+            (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
+        private float CurrentCombatSequenceMaxGap => CombatSequenceMaxGap *
+            (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
+        private double CurrentCombatSequenceStepTolerance => CombatSequenceStepTolerance *
+            (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
+        private double CurrentCombatHoldEarlyBuffer => CombatHoldEarlyBuffer *
+            (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
+        private ChapterOneBattleTimeline chapterOneBattleTimeline;
+        private ChapterOneBattleTimeline phaseThreeBattleTimeline;
         private CombatBeatAction expectedCombatAction;
         private double expectedCombatBeatDsp;
+        private double currentThreatResolveDsp;
+        private readonly CombatInputKey[] expectedCombatSteps = new CombatInputKey[3];
+        private readonly double[] expectedCombatStepDsps = new double[3];
+        private int expectedCombatStepCount;
+        private int expectedCombatStepIndex;
+        private CombatInputKey bufferedCombatKey;
+        private double bufferedCombatKeyDsp;
+        private double lastCombatSequenceInputDsp;
+        private bool leftHandCueActive;
+        private bool leftHandHoldRequired;
+        private bool leftHandHolding;
+        private bool leftHandSucceeded;
+        private bool rightHandSucceeded;
+        private bool rightHandDodgeResponse;
+        private CombatInputKey expectedLeftHandKey;
+        private double expectedLeftHandBeatDsp;
+        private double leftHandHoldStartedDsp;
+        private float expectedLeftHandHoldDuration;
+        private float leftHandHoldProgress;
+        private bool dualHandHoldPreviewActive;
+        private int lastDualHandHudPhase = -1;
         private bool combatBeatPending;
         private bool combatBeatSucceeded;
         private bool threatDamageResolved;
@@ -193,10 +351,49 @@ namespace MeixiEcho
         private int resolvedThreatId = -1;
         private double playerDamageImmuneUntilDsp;
         private int chapterOneCombatPhase = 1;
+        private double combatPhaseRestUntilDsp;
+        private Coroutine combatPhaseBannerRoutine;
+        private bool phaseThreeGuideOpen;
+        private float phaseThreeGuidePreviousTimeScale = 1f;
+        private bool phaseThreeGuidePreviousAudioPause;
+        private int phaseSuccessfulBeats;
         private bool finishingStrike;
+        private bool defeatOpen;
         private float cinematicInputLockedUntil;
         private int chapterOneCombatCombo;
+        private int chapterOneCombatBestCombo;
+        private int chapterOneCombatSuccesses;
         private int chapterOneCombatMisses;
+        private double meleeCounterUntilDsp;
+        private int meleeCounterThreatId = -1;
+        private Coroutine finalStrikeRoutine;
+        private ChapterOneSoulEchoPickup chapterOneSoulPickup;
+        private bool chapterOneSoulCollected;
+        private int gameplaySessionRevision;
+        private float finalStrikeRestoreTimeScale = 1f;
+        private float finalStrikeRestorePitch = 1f;
+        private readonly HashSet<string> collectedNpcMemories = new(StringComparer.Ordinal);
+
+        private readonly string[] diaryDates =
+        {
+            "山间旧闻 · 无法考证的年代",
+            "实践日志 · 2030 年夏",
+            "残缺卷纸 · 一"
+        };
+
+        private readonly string[] diaryTitles =
+        {
+            "关于回响力与魂音的传闻",
+            "今年，音乐似乎越来越少见了",
+            "村子曾经发生过一场大事变"
+        };
+
+        private readonly string[] diaryBodies =
+        {
+            "据山间某个村子流传已久的传闻所说，音乐拥有着无穷的力量。\n它能唤醒沉睡的山林，让干涸的溪流重新歌唱；也能穿过层层云雾，抵达人们心中最柔软的地方。\n\n有人说，只要奏响那段遗失已久的旋律，便能听见土地的记忆，看见被岁月掩埋的故事。\n\n村民们将这股力量称为“回响力”，将音乐的源头称为“魂音”。",
+            "2030 年，一支由学长学姐介绍、以音乐为主题的“三下乡”实践队伍，来到了福建闽清。\n\n但是今年和往年有所不同。\n\n一路上，能够被听见的音乐似乎越来越少了……",
+            "据记载，几年前村子发生过一场大事变。\n\n纸张在这里被撕去，余下的字迹已经模糊。\n那场事变与消失的音乐，究竟有什么关系？"
+        };
 
         private enum RhythmActionType
         {
@@ -217,21 +414,32 @@ namespace MeixiEcho
         }
 
         public bool CinematicInputLocked => Time.unscaledTime < cinematicInputLockedUntil;
-        public bool CanPlayerMove => started && !openingActive && !paused && !finishingStrike && !CinematicInputLocked &&
+        public bool CanPlayerMove => started && !openingActive && !paused && !defeatOpen && !gameplayGuideOpen && !phaseThreeGuideOpen && !finishingStrike && !sceneTransitionActive && !CinematicInputLocked &&
                                      (!rhythmActive || chapterOneCombatActive) && (!complete || secondChapterRouteActive);
-        public bool GameplayRunning => started && !openingActive && !dialogueOpen && !complete && !paused && !CinematicInputLocked;
-        public bool ChapterOneCombatActive => chapterOneCombatActive && !complete && !paused && !CinematicInputLocked;
+        public bool GameplayRunning => started && !openingActive && !dialogueOpen && !complete && !paused && !defeatOpen && !gameplayGuideOpen && !phaseThreeGuideOpen && !sceneTransitionActive && !CinematicInputLocked;
+        public bool ChapterOneCombatActive => chapterOneCombatActive && !complete && !paused && !defeatOpen && !phaseThreeGuideOpen && !sceneTransitionActive && !CinematicInputLocked;
+        public bool LeftHandCombatInputEnabled => ChapterOneCombatActive && chapterOneCombatPhase >= 3 && leftHandCueActive;
         public bool PlayerIsDodging => player != null && player.IsInvulnerable;
         public bool SecondChapterRouteActive => secondChapterRouteActive;
         public Vector3 CombatTargetPosition => creekSpirit != null ? creekSpirit.transform.position : PlayerPosition + Vector3.forward * 3f;
         public Vector3 PlayerPosition => playerTransform != null ? playerTransform.position : Vector3.zero;
         public bool EnemyThreatPending => chapterOneCombatActive && combatBeatPending;
+        public bool CombatPhaseResting => chapterOneCombatActive && (phaseThreeGuideOpen || AudioSettings.dspTime < combatPhaseRestUntilDsp);
+        public double CurrentCombatThreatResolveDsp => currentThreatResolveDsp;
+        public float AnalyzedBattleBpm => chapterOneBattleTimeline != null ? chapterOneBattleTimeline.Bpm : chapterOneCombatBpm;
+        public bool MeleeCounterWindowOpen => chapterOneCombatActive && !finishingStrike &&
+                                              meleeCounterThreatId >= 0 && AudioSettings.dspTime <= meleeCounterUntilDsp;
 
         private void Awake()
         {
             Application.targetFrameRate = 120;
             Application.runInBackground = true;
+            AudioListener.pause = false;
+            MeixiLocalProgress.Initialize();
+            MeixiLocalProgress.ApplyAudioSetting();
             uiFont = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "SimHei", "Arial" }, 34);
+            displayFont = Font.CreateDynamicFontFromOSFont(
+                new[] { "STKaiti", "华文楷体", "KaiTi", "楷体", "FZKai-Z03", "SimSun", "Microsoft YaHei" }, 72);
             BuildMaterials();
             LoadGeneratedVfxAssets();
             BuildAudio();
@@ -245,12 +453,22 @@ namespace MeixiEcho
             }
             BuildUI();
             ShowTitle();
+            // Startup flow is deliberately player-paced:
+            // ZJH logo -> title/loading screen -> click Start -> handwritten diary.
+            // The title panel is already active behind the opaque logo, so its fade
+            // cannot expose a transient 3D scene frame.
             TryStartCaptureMode();
             TryStartSecondChapterSmokeTest();
         }
 
         private void TryStartSecondChapterSmokeTest()
         {
+            if (Array.Exists(Environment.GetCommandLineArgs(), value =>
+                    string.Equals(value, "-meixiPhaseSmoke", StringComparison.OrdinalIgnoreCase)))
+            {
+                StartCoroutine(ValidateCombatPhaseRest());
+                return;
+            }
             if (Array.Exists(Environment.GetCommandLineArgs(), value =>
                     string.Equals(value, "-meixiMovementSmoke", StringComparison.OrdinalIgnoreCase)))
             {
@@ -268,11 +486,41 @@ namespace MeixiEcho
             StartCoroutine(ValidateInputAndSecondChapterTransition());
         }
 
+        private IEnumerator ValidateCombatPhaseRest()
+        {
+            yield return null;
+            CompleteTransitionImmediatelyForValidation();
+            started = true;
+            titlePanel.SetActive(false);
+            openingActive = false;
+            if (openingPanel != null) openingPanel.SetActive(false);
+            if (chapterPanel != null) chapterPanel.SetActive(false);
+            if (dialoguePanel != null) dialoguePanel.SetActive(false);
+            hudPanel.SetActive(true);
+            BeginChapterOneCombatCore();
+            creekSpirit?.PreparePhaseValidation(2);
+            int healthBefore = health;
+            yield return new WaitForSecondsRealtime(.72f);
+            bool restingAtMidpoint = CombatPhaseResting;
+            bool pendingAtMidpoint = combatBeatPending;
+            string keyAtMidpoint = combatActionKey != null ? combatActionKey.text : "<missing>";
+            DamagePlayer();
+            bool damageIgnored = health == healthBefore;
+            Debug.Log($"[MeixiPhaseSmoke] midpoint resting={restingAtMidpoint} pending={pendingAtMidpoint} " +
+                      $"key={keyAtMidpoint} damageIgnored={damageIgnored}");
+            yield return new WaitForSecondsRealtime(1.75f);
+            Debug.Log($"[MeixiPhaseSmoke] resumed resting={CombatPhaseResting} pending={combatBeatPending} " +
+                      $"key={(combatActionKey != null ? combatActionKey.text : "<missing>")} health={health}");
+            yield return new WaitForSecondsRealtime(.20f);
+            Application.Quit();
+        }
+
         private IEnumerator ValidateFreeMovement()
         {
             yield return null;
-            StartAdventure();
-            FinishOpeningSequence();
+            CompleteTransitionImmediatelyForValidation();
+            BeginAdventurePresentation();
+            FinishOpeningSequence(true);
             if (chapterPanel.activeSelf) FinishChapterCardImmediately();
             while (dialogueOpen) AdvanceDialogue();
             yield return null;
@@ -283,19 +531,25 @@ namespace MeixiEcho
                 yield break;
             }
             Vector3 explorationStart = playerTransform.position;
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W));
+            Collider[] spawnOverlaps = Physics.OverlapCapsule(explorationStart + Vector3.up * .22f,
+                explorationStart + Vector3.up * 1.72f, .39f, ~0, QueryTriggerInteraction.Ignore);
+            foreach (Collider overlap in spawnOverlaps)
+            {
+                if (overlap == null || overlap.transform == playerTransform || overlap.transform.IsChildOf(playerTransform)) continue;
+                Debug.Log($"[MeixiMovementSmoke] spawn overlap={overlap.name} path={overlap.transform.name} " +
+                          $"bounds={overlap.bounds.center}/{overlap.bounds.size} enabled={overlap.enabled}");
+            }
+            player.InjectValidationMove(Vector2.up, .65f);
             yield return new WaitForSecondsRealtime(.65f);
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             float explorationDistance = HorizontalDistance(explorationStart, playerTransform.position);
             Debug.Log($"[MeixiMovementSmoke] exploration distance={explorationDistance:F3} canMove={CanPlayerMove}");
 
-            StartChapterOneCombat();
+            ActivateChapterOneCombat();
             yield return new WaitForSecondsRealtime(.15f);
             Vector3 combatStart = playerTransform.position;
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.D));
+            player.InjectValidationMove(Vector2.right, .65f);
             yield return new WaitForSecondsRealtime(.65f);
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             yield return null;
             float combatDistance = HorizontalDistance(combatStart, playerTransform.position);
             Debug.Log($"[MeixiMovementSmoke] combat distance={combatDistance:F3} canMove={CanPlayerMove}");
@@ -306,8 +560,9 @@ namespace MeixiEcho
         private IEnumerator ValidateEndingPointerClick()
         {
             yield return null;
+            CompleteTransitionImmediatelyForValidation();
             started = true;
-            ShowEnding();
+            PresentEnding();
             yield return null;
             Mouse mouse = Mouse.current;
             if (mouse == null || endingNextChapterButton == null)
@@ -328,8 +583,9 @@ namespace MeixiEcho
         private IEnumerator ValidateInputAndSecondChapterTransition()
         {
             yield return null;
-            StartAdventure();
-            FinishOpeningSequence();
+            CompleteTransitionImmediatelyForValidation();
+            BeginAdventurePresentation();
+            FinishOpeningSequence(true);
             if (chapterPanel.activeSelf) FinishChapterCardImmediately();
             while (dialogueOpen) AdvanceDialogue();
             yield return null;
@@ -338,7 +594,7 @@ namespace MeixiEcho
                 : null;
             Debug.Log($"[MeixiInputSmoke] keyboard={Keyboard.current != null} canMove={CanPlayerMove} controller={activeController != null && activeController.enabled}");
             yield return new WaitForSecondsRealtime(.25f);
-            LoadSecondChapter();
+            UnlockSecondChapterRoute();
             yield return null;
             Debug.Log($"[MeixiRouteSmoke] route={secondChapterRouteActive} canMove={CanPlayerMove}");
             StartSecondChapterSceneLoad();
@@ -360,6 +616,11 @@ namespace MeixiEcho
                 }
             }
             orbitCamera?.Configure(playerTransform);
+
+            // Upgrade the scene-authored cast before binding the player Animator.
+            // Binding the baked DefaultMale first produced a one-frame avatar swap
+            // and was the source of first-launch / restart differences.
+            MeixiChapterOneEnvironment.Ensure();
             if (player != null)
             {
                 Animator visualAnimator = player.GetComponentInChildren<Animator>(true);
@@ -382,6 +643,7 @@ namespace MeixiEcho
                 npc.Rebind(this, playerTransform);
                 villageNpcs.Add(npc);
             }
+            SyncChapterOneStoryNpcs();
 
             ReacquireCreekSpirit();
 
@@ -433,7 +695,20 @@ namespace MeixiEcho
                 MeixiSecondChapterRoute.Ensure(this);
             }
 
-            if (toastText != null && Time.unscaledTime > toastUntil) toastText.gameObject.SetActive(false);
+            if (toastPanel != null && Time.unscaledTime > toastUntil) toastPanel.SetActive(false);
+            if (!started && titlePanel != null && titlePanel.activeSelf) UpdateTitleSaveMenuVisibility();
+
+            if (titleCaptureWhenReady && titleScreenFx != null && titleScreenFx.IsReady)
+            {
+                titleCaptureWhenReady = false;
+                captureAt = Time.unscaledTime + 0.12f;
+            }
+            if (openingCaptureWhenReady && titleScreenFx != null && titleScreenFx.IsReady)
+            {
+                openingCaptureWhenReady = false;
+                StartAdventure();
+                captureAt = Time.unscaledTime + 1.15f;
+            }
 
             if (captureMode && Time.unscaledTime >= captureAt)
             {
@@ -451,16 +726,16 @@ namespace MeixiEcho
                 }
             }
 
-            if (chapterPanel.activeSelf && Time.unscaledTime >= chapterCardUntil)
+            if (!paused && !sceneTransitionActive && chapterPanel.activeSelf && Time.unscaledTime >= chapterCardUntil)
             {
-                chapterPanel.SetActive(false);
-                Action callback = chapterCardCallback;
-                chapterCardCallback = null;
-                callback?.Invoke();
+                FinishChapterCardWithTransition();
             }
 
-            if (openingActive && Time.unscaledTime >= openingUntil) FinishOpeningSequence();
-            if (chapterOneCombatActive) UpdateChapterOneCombatHud();
+            if (!paused && openingActive) UpdateOpeningDiary();
+            // Keep the DSP-driven combat HUD frozen while paused. The combat
+            // timeline is shifted when resuming so a beat cannot expire behind
+            // the pause menu.
+            if (!paused && chapterOneCombatActive) UpdateChapterOneCombatHud();
             if ((rhythmAutoValidation || rhythmFinisherValidation || meleeAutoValidation || rangedCounterValidation || wrongMeleeValidation) && chapterOneCombatActive)
                 UpdateAutomatedRhythmValidation();
 
@@ -469,17 +744,128 @@ namespace MeixiEcho
             // Typewriter playback is visual state and must not depend on an attached
             // keyboard (batch captures, controllers-only setups and remote play can all
             // have Keyboard.current == null).
-            if (dialogueOpen) UpdateTypewriter();
+            if (!paused && dialogueOpen) UpdateTypewriter();
+
+            if (sceneTransitionActive) return;
+
+            if (terminalPanel != null && terminalPanel.activeSelf)
+            {
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+                {
+                    CloseTerminal();
+                    return;
+                }
+                if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame ||
+                                         keyboard.numpadEnterKey.wasPressedThisFrame))
+                {
+                    SubmitTerminalCommand();
+                    return;
+                }
+                if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                {
+                    Vector2 pointer = mouse.position.ReadValue();
+                    if (IsPointerInsideButton(terminalSubmitButton, pointer)) SubmitTerminalCommand();
+                    else if (IsPointerInsideButton(terminalCloseButton, pointer)) CloseTerminal();
+                }
+                return;
+            }
+
+            if (titleDeleteConfirmPanel != null && titleDeleteConfirmPanel.activeSelf)
+            {
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) CloseTitleConfirmation();
+                return;
+            }
 
             // Starting the game must not depend on EventSystem/UI module setup.
             // A direct Input System path also handles a title button whose visual
             // children intercept pointer raycasts in the authored scene.
-            bool startRequested = !started &&
+            bool pointerInsideTitleButton = mouse != null &&
+                                            (IsPointerInsideButton(titleNewJourneyButton, mouse.position.ReadValue()) ||
+                                             IsPointerInsideButton(titleContinueButton, mouse.position.ReadValue()) ||
+                                             IsPointerInsideButton(titleDeleteSaveButton, mouse.position.ReadValue()));
+            bool startRequested = !started && (titleScreenFx == null || titleScreenFx.IsReady) &&
                                   ((keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame)) ||
-                                   (mouse != null && mouse.leftButton.wasPressedThisFrame));
+                                   (mouse != null && mouse.leftButton.wasPressedThisFrame && !pointerInsideTitleButton));
             if (startRequested)
             {
-                StartAdventure();
+                HandleTitlePrimaryAction();
+                return;
+            }
+
+            if (gameplayGuideOpen)
+            {
+                if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame ||
+                                         keyboard.eKey.wasPressedThisFrame))
+                {
+                    DismissGameplayGuide();
+                    return;
+                }
+                if (mouse != null && mouse.leftButton.wasPressedThisFrame &&
+                    IsPointerInsideButton(gameplayGuideContinueButton, mouse.position.ReadValue()))
+                {
+                    DismissGameplayGuide();
+                }
+                return;
+            }
+
+            if (phaseThreeGuideOpen)
+            {
+                bool confirmPressed = keyboard != null &&
+                    (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame ||
+                     keyboard.eKey.wasPressedThisFrame);
+                if (confirmPressed || (mouse != null && mouse.leftButton.wasPressedThisFrame))
+                    DismissPhaseThreeGuide();
+                return;
+            }
+
+            // Pause input must run before any full-screen presentation or pointer
+            // fallback. While paused, only the pause menu's EventSystem buttons are
+            // allowed to receive clicks; the scene UI underneath stays inert.
+            if (keyboard != null && started && !finishingStrike && keyboard.escapeKey.wasPressedThisFrame)
+            {
+                if (pauseSettingsOpen)
+                {
+                    ClosePauseSettings();
+                    return;
+                }
+                TogglePause();
+                return;
+            }
+            if (paused && mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                Vector2 pointer = mouse.position.ReadValue();
+                // Direct pointer fallback: the pause menu remains usable even if
+                // the InputSystem UI module loses its mouse bindings.
+                if (pauseSettingsOpen)
+                {
+                    if (IsPointerInsideButton(pauseSettingsBackButton, pointer)) ClosePauseSettings();
+                    else if (IsPointerInsideButton(pauseVolumeDownButton, pointer)) AdjustMasterVolume(-.10f);
+                    else if (IsPointerInsideButton(pauseVolumeUpButton, pointer)) AdjustMasterVolume(.10f);
+                    else if (IsPointerInsideButton(pauseTerminalButton, pointer)) OpenTerminal();
+                }
+                else
+                {
+                    if (IsPointerInsideButton(pauseResumeButton, pointer)) TogglePause();
+                    else if (IsPointerInsideButton(pauseSettingsButton, pointer)) OpenPauseSettings();
+                    else if (IsPointerInsideButton(pauseRestartButton, pointer)) RestartFromPause();
+                    else if (IsPointerInsideButton(pauseQuitButton, pointer)) QuitGame();
+                }
+                return;
+            }
+            if (paused) return;
+            if (defeatOpen)
+            {
+                if (keyboard != null && keyboard.enterKey.wasPressedThisFrame)
+                {
+                    RestartAfterDefeat();
+                    return;
+                }
+                if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                {
+                    Vector2 pointer = mouse.position.ReadValue();
+                    if (IsPointerInsideButton(defeatRetryButton, pointer)) RestartAfterDefeat();
+                    else if (IsPointerInsideButton(defeatQuitButton, pointer)) QuitGame();
+                }
                 return;
             }
 
@@ -503,6 +889,12 @@ namespace MeixiEcho
                 }
             }
 
+            if (openingActive && mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                AdvanceOpeningDiary();
+                return;
+            }
+
             if (keyboard == null) return;
 
             // Every blocking presentation can be advanced directly from the
@@ -510,12 +902,12 @@ namespace MeixiEcho
             // a frozen controller when the player immediately presses movement.
             if (openingActive && AnyPresentationAdvancePressed(keyboard))
             {
-                FinishOpeningSequence();
+                AdvanceOpeningDiary();
                 return;
             }
             if (chapterPanel.activeSelf && AnyPresentationAdvancePressed(keyboard))
             {
-                FinishChapterCardImmediately();
+                FinishChapterCardWithTransition();
                 return;
             }
 
@@ -528,14 +920,6 @@ namespace MeixiEcho
             }
 
             if (CinematicInputLocked) return;
-
-            if (started && keyboard.escapeKey.wasPressedThisFrame)
-            {
-                TogglePause();
-                return;
-            }
-
-            if (paused) return;
 
             if (dialogueOpen)
             {
@@ -593,8 +977,8 @@ namespace MeixiEcho
                 if (villageAtlas.HasProperty("_BaseMap")) villageAtlas.SetTexture("_BaseMap", atlasTexture);
             }
 
-            ApplySurfaceTexture(grass, "Textures/Realistic/HumidGrassGround", new Vector2(7.5f, 7.5f), new Color(0.72f, 0.84f, 0.70f));
-            ApplySurfaceTexture(earth, "Textures/Realistic/HumidGrassGround", new Vector2(5.5f, 5.5f), new Color(0.58f, 0.43f, 0.30f));
+            ApplySurfaceTexture(grass, "Textures/Realistic/Generated/MeixiDampVillageGround", new Vector2(6.4f, 6.4f), new Color(0.82f, 0.88f, 0.78f));
+            ApplySurfaceTexture(earth, "Textures/Realistic/Generated/MeixiDampVillageGround", new Vector2(4.8f, 4.8f), new Color(0.76f, 0.66f, 0.52f));
             ApplySurfaceTexture(stone, "Textures/Realistic/MossyBluestone", new Vector2(2.2f, 2.2f), new Color(0.80f, 0.88f, 0.90f));
         }
 
@@ -658,8 +1042,48 @@ namespace MeixiEcho
             highTone = CreateTone("铃音", 440f, 0.15f, 0.30f);
             successTone = CreateTone("魂音共鸣", 660f, 0.72f, 0.30f);
             rhythmSong = CreateMeixiRhythmSong();
-            // 仅加载用户自行取得授权并放入 Resources 的音源；没有文件时使用项目原创配乐。
-            chapterOneMusic = Resources.Load<AudioClip>("Audio/PingFanZhiLu") ?? rhythmSong;
+            chapterOneExplorationMusic = Resources.Load<AudioClip>("Audio/ChapterOneExploration");
+            chapterOneMusic = Resources.Load<AudioClip>("Audio/ChapterOneBattle") ?? rhythmSong;
+            chapterOnePhaseThreeMusic = Resources.Load<AudioClip>("Audio/ChapterOnePhaseThree") ?? chapterOneMusic;
+            chapterOneBattleTimeline = ChapterOneBattleTimeline.Load();
+            phaseThreeBattleTimeline = ChapterOneBattleTimeline.Load("Audio/ChapterOnePhaseThreeBeatMap");
+            if (phaseThreeBattleTimeline == null || !phaseThreeBattleTimeline.IsValid)
+                phaseThreeBattleTimeline = ChapterOneBattleTimeline.LoadFromFile(
+                    Path.Combine(Application.streamingAssetsPath, "ChapterOnePhaseThreeBeatMap.json"));
+            if (chapterOnePhaseThreeMusic == chapterOneMusic)
+                StartCoroutine(LoadPhaseThreeAudioFromStreamingAssets());
+        }
+
+        private IEnumerator LoadPhaseThreeAudioFromStreamingAssets()
+        {
+            string filePath = Path.Combine(Application.streamingAssetsPath, "ChapterOnePhaseThree.mp3");
+            if (!File.Exists(filePath)) yield break;
+            using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(new Uri(filePath).AbsoluteUri, AudioType.MPEG))
+            {
+                yield return request.SendWebRequest();
+                if (request.result != UnityWebRequest.Result.Success) yield break;
+                AudioClip loaded = DownloadHandlerAudioClip.GetContent(request);
+                if (loaded != null)
+                {
+                    loaded.name = "ChapterOnePhaseThree";
+                    chapterOnePhaseThreeMusic = loaded;
+                    Debug.Log("[MeixiAudio] Phase-three BGM loaded from StreamingAssets.");
+                }
+            }
+        }
+
+        private void PlayChapterOneExplorationMusic()
+        {
+            if (musicSource == null || chapterOneExplorationMusic == null || chapterOneCombatActive) return;
+            if (musicSource.isPlaying && musicSource.clip == chapterOneExplorationMusic) return;
+            musicSource.Stop();
+            musicSource.clip = chapterOneExplorationMusic;
+            musicSource.loop = true;
+            musicSource.pitch = 1f;
+            musicSource.volume = 0.30f;
+            musicSource.time = 0f;
+            musicSource.Play();
+            Debug.Log($"[MeixiAudio] Chapter-one exploration BGM started: {chapterOneExplorationMusic.name}");
         }
 
         private AudioClip CreateTone(string label, float frequency, float duration, float volume)
@@ -734,7 +1158,7 @@ namespace MeixiEcho
             var sun = sunObject.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = new Color(1f, 0.76f, 0.52f);
-            sun.intensity = 1.38f;
+            sun.intensity = 1.08f;
             sun.shadows = LightShadows.Soft;
             sunObject.transform.rotation = Quaternion.Euler(42f, -32f, 0f);
             CreateDawnSkybox();
@@ -768,6 +1192,7 @@ namespace MeixiEcho
             CreateSoulNode(0, nodePositions[0]);
             CreateCreekSpirit(new Vector3(-12.4f, 0.05f, -5.6f));
             MeixiSecondChapterRoute.Ensure(this);
+            MeixiChapterOneEnvironment.Ensure();
         }
 
         private void CreateBoundary()
@@ -864,6 +1289,8 @@ namespace MeixiEcho
                 var collider = collisionProxy.AddComponent<BoxCollider>();
                 collider.center = Vector3.zero;
                 collider.size = new Vector3(worldBounds.size.x * 0.76f, worldBounds.size.y * 0.92f, worldBounds.size.z * 0.76f);
+                foreach (Renderer renderer in imported.GetComponentsInChildren<Renderer>(true))
+                    renderer.enabled = false;
                 CreateVillageModel("barrel", new Vector3(position.x + 2f, 0f, position.z - 2f), yaw + 20f, 0.9f, "古厝陶缸");
                 CreateVillageModel(index % 2 == 0 ? "wheelbarrow" : "resource_lumber", new Vector3(position.x - 2f, 0f, position.z + 1.8f), yaw - 18f, 0.9f, "村居生活物件");
                 return;
@@ -877,9 +1304,9 @@ namespace MeixiEcho
             CreateChildCube("窗灯左", root.transform, new Vector3(-size.x * 0.28f, 0.2f, -size.z * 0.515f), new Vector3(1.15f, 1.3f, 0.12f), gold, false);
             CreateChildCube("窗灯右", root.transform, new Vector3(size.x * 0.28f, 0.2f, -size.z * 0.515f), new Vector3(1.15f, 1.3f, 0.12f), gold, false);
             var roofLeft = CreateChildCube("青瓦坡一", root.transform, new Vector3(-size.x * 0.24f, size.y * 0.60f, 0f), new Vector3(size.x * 0.58f, 0.28f, size.z * 1.25f), roof, false);
-            roofLeft.transform.localRotation = Quaternion.Euler(0f, 0f, -16f);
+            roofLeft.transform.localRotation = Quaternion.Euler(0f, 0f, 16f);
             var roofRight = CreateChildCube("青瓦坡二", root.transform, new Vector3(size.x * 0.24f, size.y * 0.60f, 0f), new Vector3(size.x * 0.58f, 0.28f, size.z * 1.25f), roof, false);
-            roofRight.transform.localRotation = Quaternion.Euler(0f, 0f, 16f);
+            roofRight.transform.localRotation = Quaternion.Euler(0f, 0f, -16f);
         }
 
         private void CreateKiln()
@@ -892,8 +1319,8 @@ namespace MeixiEcho
             CreateCube("窑门火光", new Vector3(20f, 1.15f, -7.75f), new Vector3(2.0f, 2.0f, 0.18f), gold, false);
             var fire = new GameObject("陶火点光").AddComponent<Light>();
             fire.type = LightType.Point;
-            fire.range = 12f;
-            fire.intensity = 5f;
+            fire.range = 6f;
+            fire.intensity = 1.05f;
             fire.color = new Color(1f, 0.25f, 0.06f);
             fire.transform.position = new Vector3(20f, 1.4f, -7f);
         }
@@ -926,44 +1353,87 @@ namespace MeixiEcho
                 stem.transform.position = p + Vector3.up * (2.2f + i * 0.18f);
                 stem.transform.localScale = new Vector3(0.11f, 2.2f + i * 0.18f, 0.11f);
                 stem.GetComponent<Renderer>().material = leaves;
+                stem.GetComponent<Renderer>().enabled = false;
                 Destroy(stem.GetComponent<Collider>());
                 var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 crown.name = "竹叶云";
                 crown.transform.position = p + Vector3.up * (4.7f + i * 0.15f);
                 crown.transform.localScale = new Vector3(1.1f, 0.55f, 1.1f);
                 crown.GetComponent<Renderer>().material = leaves;
+                crown.GetComponent<Renderer>().enabled = false;
                 Destroy(crown.GetComponent<Collider>());
             }
         }
 
         private void CreateOliveTree(Vector3 position)
         {
+            var root = new GameObject("闽清橄榄树组");
+            root.transform.position = position;
+
             var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             trunk.name = "闽清橄榄树";
-            trunk.transform.position = position + Vector3.up * 1.5f;
-            trunk.transform.localScale = new Vector3(0.32f, 1.5f, 0.32f);
+            trunk.transform.SetParent(root.transform, false);
+            trunk.transform.localPosition = Vector3.up * 1.18f;
+            trunk.transform.localScale = new Vector3(0.38f, 1.18f, 0.38f);
             trunk.GetComponent<Renderer>().material = wood;
-            for (int i = 0; i < 5; i++)
+
+            var upperTrunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            upperTrunk.name = "橄榄树上段树干";
+            upperTrunk.transform.SetParent(root.transform, false);
+            upperTrunk.transform.localPosition = Vector3.up * 2.75f;
+            upperTrunk.transform.localScale = new Vector3(.25f, .72f, .25f);
+            upperTrunk.transform.localRotation = Quaternion.Euler(0f, 18f, 3f);
+            upperTrunk.GetComponent<Renderer>().material = wood;
+            Destroy(upperTrunk.GetComponent<Collider>());
+
+            // Flared roots conceal the primitive trunk cut and visibly anchor the tree.
+            for (int rootIndex = 0; rootIndex < 4; rootIndex++)
+            {
+                float angle = rootIndex * 90f + 18f;
+                Vector3 direction = Quaternion.Euler(0f, angle, 0f) * new Vector3(0f, -.10f, .72f);
+                var rootBranch = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                rootBranch.name = "橄榄树根系";
+                rootBranch.transform.SetParent(root.transform, false);
+                rootBranch.transform.localPosition = Vector3.up * .12f + direction * .45f;
+                rootBranch.transform.localRotation = Quaternion.FromToRotation(Vector3.up, direction.normalized);
+                rootBranch.transform.localScale = new Vector3(.10f, direction.magnitude * .50f, .10f);
+                rootBranch.GetComponent<Renderer>().material = wood;
+                Destroy(rootBranch.GetComponent<Collider>());
+            }
+
+            for (int i = 0; i < 8; i++)
             {
                 var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 crown.name = "橄榄树冠";
+                crown.transform.SetParent(root.transform, false);
                 float angle = i * 137.5f * Mathf.Deg2Rad;
-                crown.transform.position = position + new Vector3(Mathf.Cos(angle) * 0.92f, 3.55f + (i % 3) * 0.34f, Mathf.Sin(angle) * 0.72f);
-                crown.transform.localScale = new Vector3(1.65f + (i % 2) * 0.32f, 1.08f + (i % 3) * 0.12f, 1.48f);
+                crown.transform.localPosition = new Vector3(Mathf.Cos(angle) * (1.02f + (i % 3) * .16f),
+                    3.56f + (i % 4) * .31f, Mathf.Sin(angle) * (.82f + (i % 2) * .18f));
+                crown.transform.localScale = new Vector3(1.42f + (i % 3) * .24f,
+                    .72f + (i % 4) * .09f, 1.18f + ((i + 1) % 3) * .19f);
+                crown.transform.localRotation = Quaternion.Euler(i * 7f, i * 29f, (i % 2 == 0 ? -1f : 1f) * 8f);
                 crown.GetComponent<Renderer>().material = leaves;
                 Destroy(crown.GetComponent<Collider>());
 
-                Vector3 start = position + Vector3.up * 2.35f;
-                Vector3 end = crown.transform.position - Vector3.up * 0.28f;
+                Vector3 start = root.transform.position + Vector3.up * (2.10f + (i % 3) * .20f);
+                Vector3 end = crown.transform.position - Vector3.up * .18f;
                 Vector3 direction = end - start;
                 var branch = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 branch.name = "橄榄树自然分枝";
+                branch.transform.SetParent(root.transform, true);
                 branch.transform.position = (start + end) * 0.5f;
                 branch.transform.rotation = Quaternion.FromToRotation(Vector3.up, direction.normalized);
-                branch.transform.localScale = new Vector3(0.095f, direction.magnitude * 0.5f, 0.095f);
+                branch.transform.localScale = new Vector3(0.082f + (i % 3) * .012f, direction.magnitude * 0.5f,
+                    0.082f + (i % 3) * .012f);
                 branch.GetComponent<Renderer>().material = wood;
                 Destroy(branch.GetComponent<Collider>());
             }
+
+            // The merged chapter-one shell owns the visible trunk, branches and
+            // alpha-clipped foliage. This legacy hierarchy remains only as collision
+            // compatibility for authored scenes and must never draw over that shell.
+            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
         }
 
         private void CreateTerraces()
@@ -1064,8 +1534,8 @@ namespace MeixiEcho
                 Destroy(cap.GetComponent<Collider>());
                 var point = new GameObject("乡灯光").AddComponent<Light>();
                 point.type = LightType.Point;
-                point.range = 8f;
-                point.intensity = 2.2f;
+                point.range = 5.5f;
+                point.intensity = 0.75f;
                 point.color = new Color(1f, 0.54f, 0.18f);
                 point.transform.position = p + Vector3.up * 2.8f;
             }
@@ -1109,16 +1579,22 @@ namespace MeixiEcho
                 characterModel.transform.localPosition = Vector3.zero;
                 characterModel.transform.localRotation = Quaternion.identity;
                 characterModel.transform.localScale = Vector3.one;
-                Bounds initialBounds = CalculateBounds(characterModel);
+                bool rocketboxPlayer = characterAsset.name == "Male_Adult_20";
+                if (rocketboxPlayer) MeixiRealisticCast.PrepareVisual(characterModel, MeixiCastRole.LinMo, true);
+                Bounds initialBounds = rocketboxPlayer
+                    ? MeixiRealisticCast.CalculateVisibleBounds(characterModel)
+                    : CalculateBounds(characterModel);
                 float characterScale = initialBounds.size.y > 0.01f ? 1.92f / initialBounds.size.y : 1f;
                 characterModel.transform.localScale = Vector3.one * characterScale;
-                Bounds scaledBounds = CalculateBounds(characterModel);
+                Bounds scaledBounds = rocketboxPlayer
+                    ? MeixiRealisticCast.CalculateVisibleBounds(characterModel)
+                    : CalculateBounds(characterModel);
                 Vector3 modelCorrection = new(
                     root.transform.position.x - scaledBounds.center.x,
                     root.transform.position.y - scaledBounds.min.y,
                     root.transform.position.z - scaledBounds.center.z);
                 characterModel.transform.position += modelCorrection;
-                ApplyCharacterMaterial(characterModel, characterAsset.name == "DefaultMale");
+                if (!rocketboxPlayer) ApplyCharacterMaterial(characterModel, characterAsset.name == "DefaultMale");
 
                 Animator sourceAnimator = characterAsset.GetComponent<Animator>();
                 Animator animator = characterModel.GetComponent<Animator>();
@@ -1189,36 +1665,94 @@ namespace MeixiEcho
 
         private void CreateVillageNpcs()
         {
-            CreateVillageNpc("老村长", "守泉人 · 林水生", new Vector3(2.7f, 0f, 5.8f), 198f, 1.76f,
+            CreateVillageNpc("老村长", "村口老人", new Vector3(2.7f, 0f, 5.8f), 198f, 1.76f,
                 new Color(0.72f, 0.77f, 0.70f), VillageNpcStyle.Elder,
                 new[]
                 {
-                    "老村长｜你就是林家的孩子吧？你爷爷年轻时，总在桥边领唱。",
-                    "林默｜您认识我爷爷？",
-                    "老村长｜认识他的声音。人走远了，声音会替他认路。",
-                    "老村长｜去溪边听听。先别急着分析，让水声把话说完。"
-                }, "老村长｜溪水恢复以前，我每天都来这里等一会儿。声音，也是在等人。", "村");
+                    "林默｜您好！我是刚到这里的大学生，是来这边社会实践的，想问一下樟洋村怎么走？",
+                    "老村长｜emmmm，我们之前见过吧？",
+                    "林默｜没有吧……是不是您记错了？",
+                    "老村长｜哦哦哦，抱歉！我的眼睛看不太清了……",
+                    "老村长｜樟洋村？我记不太清了……",
+                    "林默｜好吧，感谢您，我再问问其他人吧。"
+                }, "老村长｜樟洋村……我确实记不太清了。", "村");
 
-            CreateVillageNpc("阿禾", "村中少年 · 采样爱好者", new Vector3(-4.0f, 0f, 2.6f), 34f, 1.68f,
+            CreateVillageNpc("小孩", "溪边玩耍的孩子", new Vector3(-4.0f, 0f, 2.6f), 34f, 1.46f,
                 new Color(0.70f, 0.83f, 0.66f), VillageNpcStyle.Youth,
                 new[]
                 {
-                    "阿禾｜城里的采样器，能听懂竹叶落在哪块石头上吗？",
-                    "林默｜它能记录频率，但“听懂”……也许还不能。",
-                    "阿禾｜那就别只看屏幕。梅溪的节拍在脚底下。",
-                    "林默｜你不觉得村里的音乐太旧吗？",
-                    "阿禾｜旧的是唱法，不是这里的声音。"
-                }, "阿禾｜等溪水醒了，我给你听我做的橄榄树节拍。", "禾");
+                    "小孩｜溪边有一个亮亮的、会发光的东西！"
+                }, "小孩｜就在溪边！它一直亮亮的。", "童");
 
-            CreateVillageNpc("桂婶", "橄榄园守护人", new Vector3(-6.6f, 0f, 8.3f), 145f, 1.64f,
+            CreateVillageNpc("石婶", "沉默的村民", new Vector3(-6.6f, 0f, 8.3f), 145f, 1.64f,
                 new Color(0.72f, 0.70f, 0.86f), VillageNpcStyle.Aunt,
                 new[]
                 {
-                    "桂婶｜这片橄榄树比我年纪还大。风一来，每棵树唱得都不一样。",
-                    "林默｜这些声音一直有人记录吗？",
-                    "桂婶｜从前记在歌里。歌没人唱，才需要你们的机器来记。",
-                    "桂婶｜机器记得清楚，人可要记得为什么唱。"
-                }, "桂婶｜顺着青石路走，闻到水汽时，就离溪边不远了。", "桂");
+                    "林默｜您好！我是刚到这里的大学生，是来这边社会实践的，想问一下樟洋村怎么走？",
+                    "石婶｜……",
+                    "林默｜？您好？",
+                    "石婶｜……"
+                }, "石婶｜……", "石");
+        }
+
+        public void SyncChapterOneStoryNpcs()
+        {
+            if (villageNpcs.Count == 0)
+            {
+                villageNpcs.AddRange(FindObjectsByType<VillageNpc3D>(FindObjectsInactive.Include));
+            }
+
+            Transform target = playerTransform;
+            if (target == null)
+            {
+                MeixiThirdPersonPlayer scenePlayer = FindAnyObjectByType<MeixiThirdPersonPlayer>(FindObjectsInactive.Include);
+                target = scenePlayer != null ? scenePlayer.transform : null;
+            }
+
+            foreach (VillageNpc3D npc in villageNpcs)
+            {
+                if (npc == null) continue;
+                string originalName = npc.DisplayName ?? npc.gameObject.name;
+                if (originalName.Contains("老村长"))
+                {
+                    ConfigureStoryNpc(npc, target, "老村长", "村口老人", new[]
+                    {
+                        "林默｜您好！我是刚到这里的大学生，是来这边社会实践的，想问一下樟洋村怎么走？",
+                        "老村长｜emmmm，我们之前见过吧？",
+                        "林默｜没有吧……是不是您记错了？",
+                        "老村长｜哦哦哦，抱歉！我的眼睛看不太清了……",
+                        "老村长｜樟洋村？我记不太清了……",
+                        "林默｜好吧，感谢您，我再问问其他人吧。"
+                    }, "老村长｜樟洋村……我确实记不太清了。", "村");
+                }
+                else if (originalName.Contains("阿禾") || originalName.Contains("小孩"))
+                {
+                    ConfigureStoryNpc(npc, target, "小孩", "溪边玩耍的孩子",
+                        new[] { "小孩｜溪边有一个亮亮的、会发光的东西！" },
+                        "小孩｜就在溪边！它一直亮亮的。", "童");
+                }
+                else if (originalName.Contains("桂婶") || originalName.Contains("石婶"))
+                {
+                    ConfigureStoryNpc(npc, target, "石婶", "沉默的村民", new[]
+                    {
+                        "林默｜您好！我是刚到这里的大学生，是来这边社会实践的，想问一下樟洋村怎么走？",
+                        "石婶｜……",
+                        "林默｜？您好？",
+                        "石婶｜……"
+                    }, "石婶｜……", "石");
+                }
+            }
+        }
+
+        private void ConfigureStoryNpc(VillageNpc3D npc, Transform target, string displayName, string role,
+            string[] lines, string repeatLine, string glyph)
+        {
+            npc.gameObject.name = displayName + "_可交互NPC";
+            npc.Configure(this, target, displayName, role, lines, repeatLine, glyph);
+            foreach (Text label in npc.GetComponentsInChildren<Text>(true))
+            {
+                if (label.name == "地标名") label.text = displayName + "  ·  " + role;
+            }
         }
 
         private void CreateVillageNpc(string displayName, string role, Vector3 position, float yaw, float height,
@@ -1228,7 +1762,13 @@ namespace MeixiEcho
             root.transform.position = position;
             root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            GameObject characterAsset = LoadPreferredCharacterModel();
+            MeixiCastRole castRole = style switch
+            {
+                VillageNpcStyle.Elder => MeixiCastRole.VillageElder,
+                VillageNpcStyle.Youth => MeixiCastRole.VillageChild,
+                _ => MeixiCastRole.VillageAunt
+            };
+            GameObject characterAsset = MeixiRealisticCast.Load(castRole) ?? LoadPreferredCharacterModel();
             if (characterAsset != null)
             {
                 GameObject model = Instantiate(characterAsset, root.transform);
@@ -1236,12 +1776,18 @@ namespace MeixiEcho
                 model.transform.localPosition = Vector3.zero;
                 model.transform.localRotation = Quaternion.identity;
                 model.transform.localScale = Vector3.one;
-                Bounds initialBounds = CalculateBounds(model);
+                bool rocketboxNpc = characterAsset.name is "Male_Adult_03" or "Male_Child_02" or "Female_Adult_12";
+                if (rocketboxNpc) MeixiRealisticCast.PrepareVisual(model, castRole, false);
+                Bounds initialBounds = rocketboxNpc
+                    ? MeixiRealisticCast.CalculateVisibleBounds(model)
+                    : CalculateBounds(model);
                 float scale = initialBounds.size.y > 0.01f ? height / initialBounds.size.y : 1f;
                 model.transform.localScale = Vector3.one * scale;
-                Bounds scaledBounds = CalculateBounds(model);
+                Bounds scaledBounds = rocketboxNpc
+                    ? MeixiRealisticCast.CalculateVisibleBounds(model)
+                    : CalculateBounds(model);
                 model.transform.position += new Vector3(position.x - scaledBounds.center.x, position.y - scaledBounds.min.y, position.z - scaledBounds.center.z);
-                ApplyNpcCharacterMaterial(model, tint, displayName, characterAsset.name == "DefaultMale");
+                if (!rocketboxNpc) ApplyNpcCharacterMaterial(model, tint, displayName, characterAsset.name == "DefaultMale");
 
                 Animator sourceAnimator = characterAsset.GetComponent<Animator>();
                 Animator animator = model.GetComponent<Animator>();
@@ -1253,11 +1799,16 @@ namespace MeixiEcho
                 animator.speed = 0.72f + villageNpcs.Count * 0.05f;
                 if (model.GetComponent<ProceduralHumanoidFallback>() == null)
                     model.AddComponent<ProceduralHumanoidFallback>();
-                if (characterAsset.name == "DefaultMale") animator.enabled = false;
+                // DefaultMale is a valid Humanoid. Disabling this Animator left every
+                // NPC in bind pose in the first Windows frame and on scene restart.
+                animator.enabled = animator.runtimeAnimatorController != null;
+                if (animator.enabled)
+                {
+                    animator.Rebind();
+                    if (animator.isActiveAndEnabled) animator.Update(0f);
+                }
             }
 
-            AddNpcAccessories(root.transform, style, height);
-            CreateWorldLabel(root.transform, displayName + "  ·  " + role, new Vector3(0f, height + 0.42f, 0f));
             VillageNpc3D npc = root.AddComponent<VillageNpc3D>();
             npc.Configure(this, playerTransform, displayName, role, firstDialogue, repeatDialogue, glyph);
             villageNpcs.Add(npc);
@@ -1538,12 +2089,13 @@ namespace MeixiEcho
             shape.length = 0.25f;
             var velocity = particles.velocityOverLifetime;
             velocity.enabled = true;
-            // Unity requires all three orbital curves to use the same curve mode.
-            // Leaving X/Z at their default constant mode while Y uses two constants
-            // floods the player log every frame and causes visible combat stutter.
-            velocity.orbitalX = new ParticleSystem.MinMaxCurve(0f, 0f);
-            velocity.orbitalY = new ParticleSystem.MinMaxCurve(1.1f, 2.0f);
-            velocity.orbitalZ = new ParticleSystem.MinMaxCurve(0f, 0f);
+            // Unity validates every assignment immediately, so switching a single
+            // axis to TwoConstants briefly leaves the three axes in mixed modes and
+            // logs an error. Keep all axes in Constant mode; visual variation still
+            // comes from the emitter's randomized start speed and rotation.
+            velocity.orbitalX = new ParticleSystem.MinMaxCurve(0f);
+            velocity.orbitalY = new ParticleSystem.MinMaxCurve(1.55f);
+            velocity.orbitalZ = new ParticleSystem.MinMaxCurve(0f);
             ConfigureShardParticleRenderer(particles, cyan);
         }
 
@@ -1604,10 +2156,8 @@ namespace MeixiEcho
 
         private static GameObject LoadPreferredCharacterModel()
         {
-            // The current combat library was authored against LinMo's Humanoid bind pose.
-            // Keep that fully textured/animated body active; the higher-detail Standard Assets
-            // reference remains available for a later dedicated retargeting pass.
-            return Resources.Load<GameObject>("Models/Characters/LinMo") ??
+            return MeixiRealisticCast.Load(MeixiCastRole.LinMo) ??
+                   Resources.Load<GameObject>("Models/Characters/LinMo") ??
                    Resources.Load<GameObject>("Models/Characters/RealisticMale/Models/DefaultMale");
         }
 
@@ -1755,16 +2305,16 @@ namespace MeixiEcho
             volume.profile = profile;
 
             Bloom bloom = profile.Add<Bloom>(true);
-            bloom.intensity.Override(0.62f);
-            bloom.threshold.Override(0.84f);
-            bloom.scatter.Override(0.72f);
+            bloom.intensity.Override(0.28f);
+            bloom.threshold.Override(1.10f);
+            bloom.scatter.Override(0.56f);
             Vignette vignette = profile.Add<Vignette>(true);
             vignette.intensity.Override(0.22f);
             vignette.smoothness.Override(0.58f);
             ColorAdjustments color = profile.Add<ColorAdjustments>(true);
-            color.postExposure.Override(0.08f);
-            color.contrast.Override(11f);
-            color.saturation.Override(7f);
+            color.postExposure.Override(-0.08f);
+            color.contrast.Override(9f);
+            color.saturation.Override(4f);
             Tonemapping tonemapping = profile.Add<Tonemapping>(true);
             tonemapping.mode.Override(TonemappingMode.ACES);
         }
@@ -1772,6 +2322,7 @@ namespace MeixiEcho
         private void BuildUI()
         {
             if (uiFont == null) uiFont = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "SimHei", "Arial" }, 34);
+            if (diaryFont == null) diaryFont = CreateDiaryHandwritingFont();
             var root = new GameObject("梅溪回响_华丽界面");
             canvas = root.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -1803,65 +2354,384 @@ namespace MeixiEcho
             BuildEndingUI();
             BuildLoadingUI();
             BuildPauseUI();
+            BuildDefeatUI();
+            BuildGameplayGuideUI();
 
-            toastText = CreateText("华丽爆字", canvas.transform, "", 42, TextAnchor.MiddleCenter, Color.white);
-            SetRect(toastText.rectTransform, new Vector2(0.22f, 0.72f), new Vector2(0.78f, 0.83f), Vector2.zero, Vector2.zero);
+            toastPanel = CreatePanel("山水声纹提示横幅", canvas.transform, Color.white, new Vector2(0.20f, 0.70f), new Vector2(0.80f, 0.90f));
+            ApplyTexture(toastPanel, "Art/PromptBannerFrame");
+            Image toastFrame = toastPanel.GetComponent<Image>();
+            toastFrame.raycastTarget = false;
+            toastText = CreateText("提示正文", toastPanel.transform, "", 27, TextAnchor.MiddleCenter, Color.white);
+            SetRect(toastText.rectTransform, new Vector2(0.17f, 0.28f), new Vector2(0.83f, 0.72f), Vector2.zero, Vector2.zero);
             DecorateText(toastText, new Color(0f, 0f, 0f, 0.9f), new Vector2(3f, -3f), true);
-            toastText.gameObject.AddComponent<FancyTextPulse>().Amount = 0.08f;
-            toastText.gameObject.SetActive(false);
+            toastBannerFx = toastPanel.AddComponent<ToastBannerFx>();
+            toastBannerFx.Configure(toastFrame);
+            toastPanel.SetActive(false);
+            BuildTransitionUI();
+        }
+
+        private void BuildTransitionUI()
+        {
+            transitionPanel = CreatePanel("电影式场景转场", canvas.transform,
+                new Color(0.006f, 0.012f, 0.015f, 1f), Vector2.zero, Vector2.one);
+            transitionPanel.transform.SetAsLastSibling();
+            transitionGroup = transitionPanel.AddComponent<CanvasGroup>();
+            transitionGroup.alpha = 0f;
+            transitionGroup.blocksRaycasts = false;
+            transitionGroup.interactable = false;
+
+            Text eyebrow = CreateText("转场眉题", transitionPanel.transform,
+                "M E I X I   ·   M E M O R Y   I N   M O T I O N", 14,
+                TextAnchor.MiddleCenter, new Color(.46f, .69f, .69f, .82f));
+            SetRect(eyebrow.rectTransform, new Vector2(.24f, .585f), new Vector2(.76f, .63f), Vector2.zero, Vector2.zero);
+
+            transitionCaption = CreateText("转场字幕", transitionPanel.transform, "梅 溪 回 响", 40,
+                TextAnchor.MiddleCenter, new Color(.92f, .84f, .63f, .98f));
+            transitionCaption.font = displayFont != null ? displayFont : uiFont;
+            SetRect(transitionCaption.rectTransform, new Vector2(.19f, .455f), new Vector2(.81f, .585f), Vector2.zero, Vector2.zero);
+            DecorateText(transitionCaption, new Color(0f, 0f, 0f, .72f), new Vector2(2f, -2f), false);
+
+            Text seal = CreateText("转场声纹印记", transitionPanel.transform, "◇", 20,
+                TextAnchor.MiddleCenter, new Color(.28f, .78f, .79f, .88f));
+            seal.font = displayFont != null ? displayFont : uiFont;
+            SetRect(seal.rectTransform, new Vector2(.485f, .393f), new Vector2(.515f, .445f), Vector2.zero, Vector2.zero);
+            var leftLine = CreatePanel("左侧余音线", transitionPanel.transform,
+                new Color(.42f, .67f, .64f, .50f), new Vector2(.315f, .417f), new Vector2(.474f, .419f));
+            var rightLine = CreatePanel("右侧余音线", transitionPanel.transform,
+                new Color(.42f, .67f, .64f, .50f), new Vector2(.526f, .417f), new Vector2(.685f, .419f));
+            leftLine.GetComponent<Image>().raycastTarget = false;
+            rightLine.GetComponent<Image>().raycastTarget = false;
+            transitionCaption.raycastTarget = false;
+            transitionPanel.SetActive(true);
+        }
+
+        private void BeginScreenTransition(string caption, Action swap, float fadeOut = .42f,
+            float hold = .10f, float fadeIn = .58f, Action completed = null)
+        {
+            if (sceneTransitionRoutine != null) StopCoroutine(sceneTransitionRoutine);
+            sceneTransitionRoutine = StartCoroutine(ScreenTransitionRoutine(caption, swap, fadeOut, hold, fadeIn, completed));
+        }
+
+        private IEnumerator ScreenTransitionRoutine(string caption, Action swap, float fadeOut,
+            float hold, float fadeIn, Action completed)
+        {
+            sceneTransitionActive = true;
+            chapterCardTransitionPending = true;
+            if (transitionPanel != null)
+            {
+                transitionPanel.SetActive(true);
+                transitionPanel.transform.SetAsLastSibling();
+                transitionGroup.blocksRaycasts = true;
+                transitionCaption.text = caption ?? string.Empty;
+            }
+
+            float restoreVolume = AudioListener.volume;
+            yield return FadeTransitionWithAudio(transitionGroup != null ? transitionGroup.alpha : 0f, 1f,
+                restoreVolume, restoreVolume * .28f, fadeOut);
+            swap?.Invoke();
+            if (hold > 0f) yield return new WaitForSecondsRealtime(hold);
+            yield return FadeTransitionWithAudio(1f, 0f, restoreVolume * .28f, restoreVolume, fadeIn);
+
+            if (transitionGroup != null)
+            {
+                transitionGroup.blocksRaycasts = false;
+                transitionGroup.interactable = false;
+            }
+            sceneTransitionActive = false;
+            chapterCardTransitionPending = false;
+            sceneTransitionRoutine = null;
+            completed?.Invoke();
+        }
+
+        private IEnumerator FadeTransitionWithAudio(float visualFrom, float visualTo,
+            float audioFrom, float audioTo, float duration)
+        {
+            if (duration <= 0f)
+            {
+                if (transitionGroup != null) transitionGroup.alpha = visualTo;
+                AudioListener.volume = audioTo;
+                yield break;
+            }
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = t * t * (3f - 2f * t);
+                if (transitionGroup != null) transitionGroup.alpha = Mathf.Lerp(visualFrom, visualTo, eased);
+                AudioListener.volume = Mathf.Lerp(audioFrom, audioTo, eased);
+                yield return null;
+            }
+            if (transitionGroup != null) transitionGroup.alpha = visualTo;
+            AudioListener.volume = audioTo;
+        }
+
+        private IEnumerator FadeTransition(float from, float to, float duration)
+        {
+            if (transitionGroup == null) yield break;
+            if (duration <= 0f)
+            {
+                transitionGroup.alpha = to;
+                yield break;
+            }
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = t * t * (3f - 2f * t);
+                transitionGroup.alpha = Mathf.Lerp(from, to, eased);
+                yield return null;
+            }
+            transitionGroup.alpha = to;
+        }
+
+        private void FadeBackToGame(float duration = .65f)
+        {
+            if (transitionGroup == null) return;
+            if (sceneTransitionRoutine != null) StopCoroutine(sceneTransitionRoutine);
+            sceneTransitionRoutine = StartCoroutine(FadeBackToGameRoutine(duration));
+        }
+
+        private IEnumerator FadeBackToGameRoutine(float duration)
+        {
+            sceneTransitionActive = true;
+            transitionPanel.SetActive(true);
+            transitionPanel.transform.SetAsLastSibling();
+            transitionGroup.blocksRaycasts = true;
+            yield return FadeTransition(1f, 0f, duration);
+            transitionGroup.blocksRaycasts = false;
+            sceneTransitionActive = false;
+            sceneTransitionRoutine = null;
+        }
+
+        private void CompleteTransitionImmediatelyForValidation()
+        {
+            if (sceneTransitionRoutine != null)
+            {
+                StopCoroutine(sceneTransitionRoutine);
+                sceneTransitionRoutine = null;
+            }
+            if (transitionGroup != null)
+            {
+                transitionGroup.alpha = 0f;
+                transitionGroup.blocksRaycasts = false;
+            }
+            AudioListener.volume = 1f;
+            sceneTransitionActive = false;
+            chapterCardTransitionPending = false;
         }
 
         private void BuildTitleUI()
         {
-            titlePanel = CreatePanel("主标题界面", canvas.transform, Color.white, Vector2.zero, Vector2.one);
-            ApplyTexture(titlePanel, "Art/TitleBackgroundV2");
-            // The whole title screen can start the game. This keeps decorative
-            // images from making the visible start button appear unresponsive.
-            var titleStartButton = titlePanel.AddComponent<Button>();
-            titleStartButton.transition = Selectable.Transition.None;
-            titleStartButton.targetGraphic = titlePanel.GetComponent<Image>();
-            titleStartButton.onClick.AddListener(StartAdventure);
-            CreatePanel("主视觉暗角", titlePanel.transform, new Color(0f, 0.015f, 0.035f, 0.24f), Vector2.zero, Vector2.one);
-            CreatePanel("左侧墨色渐隐", titlePanel.transform, new Color(0.005f, 0.018f, 0.027f, 0.18f), new Vector2(0f, 0f), new Vector2(0.51f, 1f));
-            var storyCard = CreatePanel("标题叙事玻璃卡", titlePanel.transform, new Color(0.008f, 0.035f, 0.046f, 0.68f), new Vector2(0.038f, 0.13f), new Vector2(0.49f, 0.885f));
-            storyCard.GetComponent<Image>().raycastTarget = false;
-            PolishPanel(storyCard, new Color(0.46f, 0.82f, 0.82f, 0.34f));
-            CreatePanel("标题卡金线", storyCard.transform, new Color(1f, 0.58f, 0.18f, 0.92f), new Vector2(0f, 0.05f), new Vector2(0.006f, 0.95f)).GetComponent<Image>().raycastTarget = false;
-            var episode = CreateText("体验章节", titlePanel.transform, "CHAPTER 01  /  STREAM OF MEMORY", 15, TextAnchor.MiddleLeft, new Color(1f, 0.68f, 0.28f));
-            SetRect(episode.rectTransform, new Vector2(0.065f, 0.845f), new Vector2(0.43f, 0.88f), Vector2.zero, Vector2.zero);
-            var eyebrow = CreateText("标题眉题", titlePanel.transform, "MEIXI  ·  FUJIAN  ·  ECHOES OF THE LAND", 18, TextAnchor.MiddleLeft, new Color(0.56f, 0.86f, 0.90f));
-            SetRect(eyebrow.rectTransform, new Vector2(0.065f, 0.79f), new Vector2(0.45f, 0.835f), Vector2.zero, Vector2.zero);
-            var title = CreateText("梅溪回响标题", titlePanel.transform, "梅 溪 回 响", 92, TextAnchor.MiddleLeft, new Color(1f, 0.78f, 0.34f));
-            SetRect(title.rectTransform, new Vector2(0.06f, 0.64f), new Vector2(0.47f, 0.80f), Vector2.zero, Vector2.zero);
-            DecorateText(title, new Color(0.08f, 0.02f, 0f, 0.95f), new Vector2(5f, -5f), true);
-            title.gameObject.AddComponent<FancyTextPulse>().Amount = 0.025f;
-            var line = CreatePanel("金色题线", titlePanel.transform, new Color(1f, 0.58f, 0.18f, 0.88f), new Vector2(0.065f, 0.625f), new Vector2(0.34f, 0.629f));
-            line.GetComponent<Image>().raycastTarget = false;
-            var subtitle = CreateText("类型", titlePanel.transform, "第三人称剧情动作音游  ·  第一章体验版", 24, TextAnchor.MiddleLeft, new Color(0.90f, 0.95f, 1f));
-            SetRect(subtitle.rectTransform, new Vector2(0.065f, 0.55f), new Vector2(0.47f, 0.615f), Vector2.zero, Vector2.zero);
-            DecorateText(subtitle, Color.black, new Vector2(2f, -2f), false);
-            var story = CreateText("标题故事钩子", titlePanel.transform, "一座逐渐失去声音的村庄。\n一个只相信数据的年轻人。\n沿着溪流，听见土地留下的记忆。", 20, TextAnchor.UpperLeft, new Color(0.82f, 0.90f, 0.90f));
-            SetRect(story.rectTransform, new Vector2(0.065f, 0.405f), new Vector2(0.45f, 0.535f), Vector2.zero, Vector2.zero);
-            var start = CreateButton("启程按钮", titlePanel.transform, "踏 入 梅 溪", new Color(0.65f, 0.20f, 0.08f, 0.96f));
-            SetRect(start.GetComponent<RectTransform>(), new Vector2(0.065f, 0.265f), new Vector2(0.315f, 0.375f), Vector2.zero, Vector2.zero);
-            start.onClick.AddListener(StartAdventure);
-            start.gameObject.AddComponent<FancyTextPulse>().Amount = 0.035f;
-            PolishPanel(start.gameObject, new Color(1f, 0.62f, 0.22f, 0.72f));
-            var controls = CreateText("主界面操作", titlePanel.transform, "WASD  行走探索   ·   鼠标  环绕镜头   ·   E  与村民交谈\nJ  近战突进   ·   K  远程音符   ·   SPACE  瞬身闪避", 17, TextAnchor.MiddleLeft, new Color(0.72f, 0.86f, 0.90f));
-            SetRect(controls.rectTransform, new Vector2(0.065f, 0.155f), new Vector2(0.46f, 0.245f), Vector2.zero, Vector2.zero);
+            titlePanel = CreatePanel("主标题界面", canvas.transform, new Color(0.006f, 0.012f, 0.018f, 1f), Vector2.zero, Vector2.one);
+            Image titleInputSurface = titlePanel.GetComponent<Image>();
+            var backgroundObject = CreatePanel("动态溪水背景", titlePanel.transform, Color.white, new Vector2(-0.02f, -0.02f), new Vector2(1.02f, 1.02f));
+            ApplyTexture(backgroundObject, "Art/TitleBackgroundV2");
+            Image backgroundImage = backgroundObject.GetComponent<Image>();
+            backgroundImage.color = new Color(0.82f, 0.90f, 0.96f, 1f);
+            backgroundImage.raycastTarget = false;
+            Shader waterShader = Resources.Load<Shader>("Shaders/MeixiTitleWaterFlow");
+            if (waterShader != null)
+                backgroundImage.material = new Material(waterShader) { name = "梅溪标题溪水流动材质" };
+
+            titlePrimaryButton = titlePanel.AddComponent<Button>();
+            titlePrimaryButton.transition = Selectable.Transition.None;
+            titlePrimaryButton.targetGraphic = titleInputSurface;
+            titlePrimaryButton.interactable = false;
+            titlePrimaryButton.onClick.AddListener(HandleTitlePrimaryAction);
+
+            var cinematicVeil = CreatePanel("电影暗幕", titlePanel.transform, new Color(0.002f, 0.008f, 0.015f, 0.46f), Vector2.zero, Vector2.one);
+            cinematicVeil.GetComponent<Image>().raycastTarget = false;
+
+            var sparkleRoot = new GameObject("标题流萤").AddComponent<RectTransform>();
+            sparkleRoot.SetParent(titlePanel.transform, false);
+            SetRect(sparkleRoot, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+            var titleRoot = new GameObject("标题主体").AddComponent<RectTransform>();
+            titleRoot.SetParent(titlePanel.transform, false);
+            SetRect(titleRoot, new Vector2(0.10f, 0.37f), new Vector2(0.90f, 0.77f), Vector2.zero, Vector2.zero);
+            var titleGroup = titleRoot.gameObject.AddComponent<CanvasGroup>();
+            titleGroup.alpha = 0f;
+
+            var wordmarkObject = CreatePanel("梅溪回响艺术字", titleRoot, Color.white, new Vector2(0.01f, 0.20f), new Vector2(0.99f, 0.96f));
+            ApplyTexture(wordmarkObject, "Art/MeixiTitleWordmark");
+            Image wordmark = wordmarkObject.GetComponent<Image>();
+            wordmark.preserveAspect = true;
+            wordmark.raycastTarget = false;
+
+            var leftLine = CreatePanel("标题左金线", titleRoot, new Color(1f, 0.70f, 0.26f, 0.66f), new Vector2(0.20f, 0.15f), new Vector2(0.465f, 0.156f)).GetComponent<Image>();
+            leftLine.raycastTarget = false;
+            var rightLine = CreatePanel("标题右金线", titleRoot, new Color(1f, 0.70f, 0.26f, 0.66f), new Vector2(0.535f, 0.15f), new Vector2(0.80f, 0.156f)).GetComponent<Image>();
+            rightLine.raycastTarget = false;
+            RectTransform centerDiamond = CreatePanel("标题中心菱形", titleRoot, new Color(0.52f, 0.93f, 1f, 0.88f), new Vector2(0.5f, 0.153f), new Vector2(0.5f, 0.153f)).GetComponent<RectTransform>();
+            centerDiamond.sizeDelta = new Vector2(12f, 12f);
+            centerDiamond.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            centerDiamond.GetComponent<Image>().raycastTarget = false;
+
+            var subtitle = CreateText("开场副标题", titleRoot, "第三人称剧情动作音游", 20, TextAnchor.MiddleCenter, new Color(0.84f, 0.94f, 1f, 0.92f));
+            SetRect(subtitle.rectTransform, new Vector2(0.20f, 0.01f), new Vector2(0.80f, 0.13f), Vector2.zero, Vector2.zero);
+            DecorateText(subtitle, new Color(0f, 0f, 0f, 0.76f), new Vector2(2f, -2f), false);
+
+            var loadingRoot = new GameObject("加载区域").AddComponent<RectTransform>();
+            loadingRoot.SetParent(titlePanel.transform, false);
+            SetRect(loadingRoot, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var loadingGroup = loadingRoot.gameObject.AddComponent<CanvasGroup>();
+
+            var status = CreateText("加载状态", loadingRoot, "正在读取世界数据", 19, TextAnchor.MiddleCenter, new Color(1f, 0.76f, 0.34f));
+            SetRect(status.rectTransform, new Vector2(0.34f, 0.145f), new Vector2(0.66f, 0.185f), Vector2.zero, Vector2.zero);
+
+            var loadingRail = CreatePanel("声纹加载轨道", loadingRoot, new Color(0.42f, 0.70f, 0.80f, 0.30f), new Vector2(0.27f, 0.116f), new Vector2(0.73f, 0.121f));
+            loadingRail.GetComponent<Image>().raycastTarget = false;
+            var loadingFillObject = CreatePanel("真实加载进度", loadingRail.transform, new Color(0.20f, 0.90f, 1f, 0.96f), Vector2.zero, Vector2.one);
+            Image loadingFill = loadingFillObject.GetComponent<Image>();
+            loadingFill.type = Image.Type.Filled;
+            loadingFill.fillMethod = Image.FillMethod.Horizontal;
+            loadingFill.fillOrigin = 0;
+            loadingFill.fillAmount = 0f;
+            loadingFill.raycastTarget = false;
+
+            RectTransform leftCap = CreatePanel("加载左菱形", loadingRoot, new Color(1f, 0.71f, 0.27f, 0.96f), new Vector2(0.262f, 0.118f), new Vector2(0.262f, 0.118f)).GetComponent<RectTransform>();
+            leftCap.sizeDelta = new Vector2(15f, 15f);
+            leftCap.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            leftCap.GetComponent<Image>().raycastTarget = false;
+            RectTransform rightCap = CreatePanel("加载右菱形", loadingRoot, new Color(1f, 0.71f, 0.27f, 0.96f), new Vector2(0.738f, 0.118f), new Vector2(0.738f, 0.118f)).GetComponent<RectTransform>();
+            rightCap.sizeDelta = new Vector2(15f, 15f);
+            rightCap.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            rightCap.GetComponent<Image>().raycastTarget = false;
+
+            var percent = CreateText("加载百分比", loadingRoot, "0%", 15, TextAnchor.MiddleRight, new Color(0.68f, 0.88f, 0.94f));
+            SetRect(percent.rectTransform, new Vector2(0.73f, 0.101f), new Vector2(0.79f, 0.136f), Vector2.zero, Vector2.zero);
+
+            var ready = CreateText("开始游戏", titlePanel.transform, "选 择 旅 途", 22, TextAnchor.MiddleCenter, new Color(1f, 0.76f, 0.34f));
+            SetRect(ready.rectTransform, new Vector2(0.36f, 0.245f), new Vector2(0.64f, 0.290f), Vector2.zero, Vector2.zero);
+
+            var press = CreateText("开始提示", titlePanel.transform, "ENTER / SPACE  进入推荐选项", 16, TextAnchor.MiddleCenter, new Color(0.82f, 0.96f, 1f, 0.92f));
+            SetRect(press.rectTransform, new Vector2(0.32f, 0.205f), new Vector2(0.68f, 0.238f), Vector2.zero, Vector2.zero);
+            DecorateText(press, Color.black, new Vector2(2f, -2f), false);
+
+            titleScreenFx = titlePanel.AddComponent<MeixiTitleScreenFx>();
+            titleScreenFx.Configure(backgroundImage.rectTransform, titleRoot, titleGroup, loadingGroup, loadingFill,
+                status, percent, ready, press, titlePrimaryButton, sparkleRoot,
+                leftLine, rightLine, centerDiamond.GetComponent<Image>());
+
+            GameObject saveMenu = new("标题存档菜单");
+            saveMenu.transform.SetParent(titlePanel.transform, false);
+            RectTransform saveMenuRect = saveMenu.AddComponent<RectTransform>();
+            SetRect(saveMenuRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            titleSaveMenuGroup = saveMenu.AddComponent<CanvasGroup>();
+            titleSaveMenuGroup.alpha = 0f;
+            titleSaveMenuGroup.interactable = false;
+            titleSaveMenuGroup.blocksRaycasts = false;
+
+            titleContinueButton = CreateButton("开始游戏", saveMenu.transform, "开 始 游 戏",
+                new Color(.045f, .29f, .34f, .98f));
+            SetRect(titleContinueButton.GetComponent<RectTransform>(), new Vector2(.285f, .105f), new Vector2(.445f, .175f), Vector2.zero, Vector2.zero);
+            titleContinueButton.onClick.AddListener(ContinueSavedJourney);
+            titleNewJourneyButton = CreateButton("新旅途", saveMenu.transform, "新 旅 途",
+                new Color(.48f, .14f, .055f, .98f));
+            SetRect(titleNewJourneyButton.GetComponent<RectTransform>(), new Vector2(.455f, .105f), new Vector2(.615f, .175f), Vector2.zero, Vector2.zero);
+            titleNewJourneyButton.onClick.AddListener(OpenNewJourneyConfirmation);
+            titleDeleteSaveButton = CreateButton("删除本地存档", saveMenu.transform, "删 除 存 档",
+                new Color(.25f, .055f, .065f, .98f));
+            SetRect(titleDeleteSaveButton.GetComponent<RectTransform>(), new Vector2(.625f, .105f), new Vector2(.735f, .175f), Vector2.zero, Vector2.zero);
+            titleDeleteSaveButton.onClick.AddListener(OpenDeleteSaveConfirmation);
+            titleSaveSummaryText = CreateText("本地存档摘要", saveMenu.transform, string.Empty, 14,
+                TextAnchor.MiddleCenter, new Color(.68f, .88f, .92f));
+            SetRect(titleSaveSummaryText.rectTransform, new Vector2(.27f, .050f), new Vector2(.74f, .095f), Vector2.zero, Vector2.zero);
+
+            titleDeleteConfirmPanel = CreatePanel("旅途操作确认", titlePanel.transform,
+                new Color(.003f, .010f, .015f, .90f), Vector2.zero, Vector2.one);
+            GameObject deleteCard = CreatePanel("旅途操作确认卡", titleDeleteConfirmPanel.transform,
+                new Color(.012f, .045f, .058f, .99f), new Vector2(.31f, .29f), new Vector2(.69f, .71f));
+            PolishPanel(deleteCard, new Color(1f, .30f, .22f, .75f));
+            titleConfirmationTitleText = CreateText("确认操作标题", deleteCard.transform, string.Empty, 34,
+                TextAnchor.MiddleCenter, new Color(1f, .68f, .28f));
+            SetRect(titleConfirmationTitleText.rectTransform, new Vector2(.08f, .66f), new Vector2(.92f, .86f), Vector2.zero, Vector2.zero);
+            titleConfirmationBodyText = CreateText("确认操作说明", deleteCard.transform, string.Empty, 18,
+                TextAnchor.MiddleCenter, new Color(.84f, .92f, .92f));
+            SetRect(titleConfirmationBodyText.rectTransform, new Vector2(.10f, .38f), new Vector2(.90f, .64f), Vector2.zero, Vector2.zero);
+            titleConfirmationAcceptButton = CreateButton("确认旅途操作", deleteCard.transform, "确 认",
+                new Color(.42f, .045f, .055f, .99f));
+            SetRect(titleConfirmationAcceptButton.GetComponent<RectTransform>(), new Vector2(.12f, .13f), new Vector2(.47f, .31f), Vector2.zero, Vector2.zero);
+            titleConfirmationAcceptButton.onClick.AddListener(ConfirmTitleAction);
+            Button cancelDelete = CreateButton("取消旅途操作", deleteCard.transform, "取 消",
+                new Color(.045f, .28f, .32f, .99f));
+            SetRect(cancelDelete.GetComponent<RectTransform>(), new Vector2(.53f, .13f), new Vector2(.88f, .31f), Vector2.zero, Vector2.zero);
+            cancelDelete.onClick.AddListener(CloseTitleConfirmation);
+            titleDeleteConfirmPanel.SetActive(false);
+            RefreshTitleSaveUi();
         }
 
         private void BuildOpeningUI()
         {
-            openingPanel = CreatePanel("第一章电影开场", canvas.transform, Color.clear, Vector2.zero, Vector2.one);
-            CreatePanel("电影黑边上", openingPanel.transform, new Color(0f, 0f, 0f, 0.96f), new Vector2(0f, 0.885f), Vector2.one);
-            CreatePanel("电影黑边下", openingPanel.transform, new Color(0f, 0f, 0f, 0.96f), Vector2.zero, new Vector2(1f, 0.115f));
-            var place = CreateText("开场地点", openingPanel.transform, "福 建 · 闽 清\n梅 溪 村   05:42", 28, TextAnchor.LowerLeft, new Color(0.92f, 0.96f, 0.94f));
-            SetRect(place.rectTransform, new Vector2(0.055f, 0.14f), new Vector2(0.40f, 0.29f), Vector2.zero, Vector2.zero);
-            DecorateText(place, Color.black, new Vector2(2f, -2f), false);
-            var caption = CreateText("开场旁白", openingPanel.transform, "城市的噪声，在山路尽头突然消失。", 24, TextAnchor.LowerRight, new Color(1f, 0.77f, 0.38f));
-            SetRect(caption.rectTransform, new Vector2(0.47f, 0.14f), new Vector2(0.945f, 0.23f), Vector2.zero, Vector2.zero);
+            openingPanel = CreatePanel("序章日记放映", canvas.transform, new Color(0f, 0f, 0f, 1f), Vector2.zero, Vector2.one);
+            CreatePanel("放映暗幕左", openingPanel.transform, new Color(.015f, .012f, .009f, 1f), Vector2.zero, new Vector2(.23f, 1f));
+            CreatePanel("放映暗幕右", openingPanel.transform, new Color(.015f, .012f, .009f, 1f), new Vector2(.77f, 0f), Vector2.one);
+
+            GameObject paper = CreatePanel("泛黄调研日记", openingPanel.transform, Color.white,
+                new Vector2(.145f, .155f), new Vector2(.855f, .845f));
+            ApplyTexture(paper, "Art/MeixiDiaryPaperLandscapeV1");
+            Image paperImage = paper.GetComponent<Image>();
+            paperImage.preserveAspect = true;
+            paperImage.raycastTarget = false;
+            PolishPanel(paper, new Color(.78f, .57f, .28f, .50f));
+            openingPaperGroup = paper.AddComponent<CanvasGroup>();
+
+            openingDiaryDate = CreateText("日记日期", paper.transform, diaryDates[0], 18,
+                TextAnchor.MiddleLeft, new Color(.20f, .22f, .19f, .82f));
+            SetRect(openingDiaryDate.rectTransform, new Vector2(.12f, .79f), new Vector2(.88f, .87f), Vector2.zero, Vector2.zero);
+            openingDiaryTitle = CreateText("日记标题", paper.transform, diaryTitles[0], 35,
+                TextAnchor.MiddleCenter, new Color(.13f, .19f, .18f, .96f));
+            SetRect(openingDiaryTitle.rectTransform, new Vector2(.12f, .64f), new Vector2(.88f, .78f), Vector2.zero, Vector2.zero);
+            DecorateText(openingDiaryTitle, new Color(.92f, .83f, .63f, .45f), new Vector2(1f, -1f), false);
+            CreatePanel("日记墨线", paper.transform, new Color(.11f, .24f, .25f, .48f),
+                new Vector2(.14f, .625f), new Vector2(.86f, .629f));
+            openingDiaryBody = CreateText("日记正文", paper.transform, diaryBodies[0], 23,
+                TextAnchor.UpperLeft, new Color(.16f, .17f, .14f, .94f));
+            openingDiaryBody.lineSpacing = 1.28f;
+            SetRect(openingDiaryBody.rectTransform, new Vector2(.13f, .18f), new Vector2(.87f, .59f), Vector2.zero, Vector2.zero);
+            openingDiaryPageText = CreateText("日记页码", paper.transform, "— 01 / 03 —", 15,
+                TextAnchor.MiddleCenter, new Color(.18f, .25f, .23f, .70f));
+            SetRect(openingDiaryPageText.rectTransform, new Vector2(.34f, .08f), new Vector2(.66f, .14f), Vector2.zero, Vector2.zero);
+
+            if (diaryFont != null)
+            {
+                openingDiaryDate.font = diaryFont;
+                openingDiaryTitle.font = diaryFont;
+                openingDiaryBody.font = diaryFont;
+                openingDiaryPageText.font = diaryFont;
+            }
+
+            var prologue = CreateText("序章标记", openingPanel.transform, "序 章  ·  回 乡 之 前", 18,
+                TextAnchor.MiddleCenter, new Color(.82f, .66f, .38f, .88f));
+            SetRect(prologue.rectTransform, new Vector2(.02f, .86f), new Vector2(.25f, .92f), Vector2.zero, Vector2.zero);
+            var hint = CreateText("日记翻页提示", openingPanel.transform, "SPACE / ENTER / 点击  ·  翻页",
+                16, TextAnchor.MiddleCenter, new Color(.77f, .70f, .57f, .82f));
+            SetRect(hint.rectTransform, new Vector2(.76f, .08f), new Vector2(.98f, .14f), Vector2.zero, Vector2.zero);
+            hint.gameObject.AddComponent<FancyTextPulse>().Fade = true;
             openingPanel.SetActive(false);
+        }
+
+        private static Font CreateDiaryHandwritingFont()
+        {
+            // 华文行楷是真正的中文手写/行书字形；同时保留英文内部名与
+            // 其他书写体作为不同 Windows 语言环境下的安全回退。
+            string[] preferred = { "华文行楷", "STXingkai", "方正舒体", "FZShuTi", "华文新魏", "STXinwei", "KaiTi", "STKaiti" };
+            HashSet<string> installed = new(Font.GetOSInstalledFontNames(), StringComparer.OrdinalIgnoreCase);
+            foreach (string fontName in preferred)
+            {
+                if (!installed.Contains(fontName)) continue;
+                Font selected = Font.CreateDynamicFontFromOSFont(fontName, 42);
+                if (selected == null) continue;
+                Debug.Log($"[MeixiUI] Diary handwriting font selected: {fontName}");
+                return selected;
+            }
+
+            Debug.LogWarning("[MeixiUI] Chinese handwriting font not found; using system fallback.");
+            return Font.CreateDynamicFontFromOSFont(new[] { "KaiTi", "SimSun" }, 42);
         }
 
         private void BuildHudUI()
@@ -1869,17 +2739,53 @@ namespace MeixiEcho
             hudPanel = CreatePanel("游戏HUD", canvas.transform, Color.clear, Vector2.zero, Vector2.one);
             var quest = CreatePanel("水纹任务签", hudPanel.transform, Color.white, new Vector2(0.018f, 0.80f), new Vector2(0.39f, 0.965f));
             ApplyTexture(quest, "Art/QuestFrameV2");
+            storyProgressText = CreateText("主线推进", quest.transform, "主线 01 / 04  ·  询问道路", 14,
+                TextAnchor.MiddleLeft, new Color(.48f, .86f, .92f));
+            SetRect(storyProgressText.rectTransform, new Vector2(.15f, .76f), new Vector2(.91f, .94f), Vector2.zero, Vector2.zero);
             chapterHudText = CreateText("当前章节", quest.transform, "第一章 · 没有声音的村庄", 27, TextAnchor.MiddleLeft, new Color(1f, 0.78f, 0.35f));
-            SetRect(chapterHudText.rectTransform, new Vector2(0.15f, 0.49f), new Vector2(0.91f, 0.87f), Vector2.zero, Vector2.zero);
+            SetRect(chapterHudText.rectTransform, new Vector2(0.15f, 0.43f), new Vector2(0.91f, 0.76f), Vector2.zero, Vector2.zero);
             DecorateText(chapterHudText, Color.black, new Vector2(2f, -2f), false);
-            objectiveText = CreateText("当前目标", quest.transform, "调查村庄中央的异常声纹", 21, TextAnchor.MiddleLeft, Color.white);
-            SetRect(objectiveText.rectTransform, new Vector2(0.15f, 0.16f), new Vector2(0.91f, 0.53f), Vector2.zero, Vector2.zero);
+            objectiveText = CreateText("当前目标", quest.transform, "在村口找到老村长，询问樟洋村怎么走", 19, TextAnchor.MiddleLeft, Color.white);
+            SetRect(objectiveText.rectTransform, new Vector2(0.15f, 0.10f), new Vector2(0.91f, 0.46f), Vector2.zero, Vector2.zero);
 
-            healthText = CreateText("回响力", hudPanel.transform, "回响力  ◆ ◆ ◆ ◆ ◆", 23, TextAnchor.UpperRight, new Color(1f, 0.48f, 0.32f));
-            SetRect(healthText.rectTransform, new Vector2(0.72f, 0.915f), new Vector2(0.965f, 0.967f), Vector2.zero, Vector2.zero);
+            GameObject healthCard = CreatePanel("回响力状态卡", hudPanel.transform,
+                new Color(.008f, .035f, .048f, .88f), new Vector2(.715f, .900f), new Vector2(.972f, .978f));
+            PolishPanel(healthCard, new Color(.24f, .88f, 1f, .50f));
+            healthCardRect = healthCard.GetComponent<RectTransform>();
+            healthText = CreateText("回响力", healthCard.transform, "回响力  5 / 5", 21,
+                TextAnchor.MiddleRight, new Color(1f, 0.58f, 0.34f));
+            SetRect(healthText.rectTransform, new Vector2(.05f, .43f), new Vector2(.95f, .97f), Vector2.zero, Vector2.zero);
             DecorateText(healthText, Color.black, new Vector2(2f, -2f), false);
-            soulCountText = CreateText("魂音数量", hudPanel.transform, "溪流魂音  0 / 1", 19, TextAnchor.UpperRight, new Color(0.42f, 0.90f, 1f));
-            SetRect(soulCountText.rectTransform, new Vector2(0.72f, 0.865f), new Vector2(0.965f, 0.915f), Vector2.zero, Vector2.zero);
+
+            GameObject healthTrack = CreatePanel("回响力能量轨", healthCard.transform,
+                new Color(.012f, .075f, .090f, .96f), new Vector2(.34f, .12f), new Vector2(.95f, .35f));
+            PolishPanel(healthTrack, new Color(.20f, .76f, .88f, .46f));
+            for (int segment = 0; segment < healthBarSegments.Length; segment++)
+            {
+                float x0 = .025f + segment * .194f;
+                healthBarSegments[segment] = CreatePanel("回响力矩形格_" + (segment + 1), healthTrack.transform,
+                    new Color(.18f, .92f, 1f, .98f), new Vector2(x0, .14f), new Vector2(x0 + .166f, .86f)).GetComponent<Image>();
+                healthBarSegments[segment].raycastTarget = false;
+            }
+
+            GameObject healthFx = CreatePanel("回响力增减脉冲", healthCard.transform,
+                new Color(.18f, .95f, 1f, .20f), Vector2.zero, Vector2.one);
+            healthBarGlow = healthFx.GetComponent<Image>();
+            healthFxGroup = healthFx.AddComponent<CanvasGroup>();
+            healthFxGroup.alpha = 0f;
+            healthFxGroup.blocksRaycasts = false;
+            healthDeltaText = CreateText("回响力增减值", healthCard.transform, "+2 回响", 20,
+                TextAnchor.MiddleLeft, new Color(.38f, 1f, .72f));
+            SetRect(healthDeltaText.rectTransform, new Vector2(.045f, .05f), new Vector2(.36f, .43f), Vector2.zero, Vector2.zero);
+            DecorateText(healthDeltaText, Color.black, new Vector2(2f, -2f), true);
+            healthDeltaText.gameObject.SetActive(false);
+
+            displayedHealth = health;
+            soulCountText = CreateText("魂音数量", hudPanel.transform, "收集魂音：0 / 3", 19, TextAnchor.UpperRight, new Color(0.42f, 0.90f, 1f));
+            SetRect(soulCountText.rectTransform, new Vector2(0.72f, 0.850f), new Vector2(0.965f, 0.900f), Vector2.zero, Vector2.zero);
+            archiveProgressText = CreateText("村民线索数量", hudPanel.transform, "村民线索  0 / 3", 17,
+                TextAnchor.UpperRight, new Color(.92f, .76f, .44f));
+            SetRect(archiveProgressText.rectTransform, new Vector2(.72f, .808f), new Vector2(.965f, .854f), Vector2.zero, Vector2.zero);
 
             Text arrowText = CreateText("方向箭头", hudPanel.transform, "◇", 34, TextAnchor.MiddleCenter, new Color(1f, 0.66f, 0.22f));
             SetRect(arrowText.rectTransform, new Vector2(0.46f, 0.91f), new Vector2(0.50f, 0.97f), Vector2.zero, Vector2.zero);
@@ -1902,6 +2808,7 @@ namespace MeixiEcho
             SetRect(interactionSubtitle.rectTransform, new Vector2(0.21f, 0.10f), new Vector2(0.96f, 0.48f), Vector2.zero, Vector2.zero);
             interactionTitle.gameObject.AddComponent<FancyTextPulse>().Amount = 0.035f;
             interactionText = interactionTitle;
+            interactionCard.AddComponent<MeixiUiPanelReveal>().Configure(.18f, .94f);
             interactionCard.SetActive(false);
             hudPanel.SetActive(false);
         }
@@ -1943,28 +2850,339 @@ namespace MeixiEcho
         private void BuildPauseUI()
         {
             pausePanel = CreatePanel("暂停界面", canvas.transform, new Color(0.003f, 0.012f, 0.020f, 0.82f), Vector2.zero, Vector2.one);
-            var card = CreatePanel("暂停主卡", pausePanel.transform, new Color(0.018f, 0.055f, 0.080f, 0.98f), new Vector2(0.34f, 0.20f), new Vector2(0.66f, 0.80f));
+            var card = CreatePanel("暂停主卡", pausePanel.transform, new Color(0.018f, 0.055f, 0.080f, 0.98f), new Vector2(0.34f, 0.16f), new Vector2(0.66f, 0.84f));
             PolishPanel(card, new Color(1f, 0.55f, 0.17f, 0.65f));
+            card.AddComponent<MeixiUiPanelReveal>().Configure(.24f, .90f);
             var eyebrow = CreateText("暂停眉题", card.transform, "MEIXI RESONANCE", 16, TextAnchor.MiddleCenter, new Color(0.32f, 0.82f, 0.92f));
             SetRect(eyebrow.rectTransform, new Vector2(0.12f, 0.84f), new Vector2(0.88f, 0.92f), Vector2.zero, Vector2.zero);
             var title = CreateText("暂停标题", card.transform, "魂 音 暂 歇", 48, TextAnchor.MiddleCenter, new Color(1f, 0.78f, 0.34f));
             SetRect(title.rectTransform, new Vector2(0.08f, 0.68f), new Vector2(0.92f, 0.84f), Vector2.zero, Vector2.zero);
             DecorateText(title, Color.black, new Vector2(3f, -3f), true);
-            var controls = CreateText("暂停操作", card.transform, "WASD  行走     鼠标  环绕镜头\nSPACE  跳跃     SHIFT / Q  踏音闪避\n左 / 右键（J / K）声纹打击     E  聆听魂音", 19, TextAnchor.MiddleCenter, new Color(0.74f, 0.87f, 0.93f));
-            SetRect(controls.rectTransform, new Vector2(0.09f, 0.45f), new Vector2(0.91f, 0.66f), Vector2.zero, Vector2.zero);
-            var resume = CreateButton("继续游戏", card.transform, "继 续 聆 听", new Color(0.62f, 0.18f, 0.07f, 0.98f));
-            SetRect(resume.GetComponent<RectTransform>(), new Vector2(0.18f, 0.29f), new Vector2(0.82f, 0.41f), Vector2.zero, Vector2.zero);
-            resume.onClick.AddListener(TogglePause);
-            var restart = CreateButton("重新开始", card.transform, "重 新 启 程", new Color(0.06f, 0.24f, 0.31f, 0.98f));
-            SetRect(restart.GetComponent<RectTransform>(), new Vector2(0.18f, 0.14f), new Vector2(0.82f, 0.26f), Vector2.zero, Vector2.zero);
-            restart.onClick.AddListener(() =>
-            {
-                Time.timeScale = 1f;
-                UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
-            });
-            var hint = CreateText("暂停提示", card.transform, "ESC  返回游戏", 15, TextAnchor.MiddleCenter, new Color(0.48f, 0.72f, 0.79f));
-            SetRect(hint.rectTransform, new Vector2(0.15f, 0.03f), new Vector2(0.85f, 0.11f), Vector2.zero, Vector2.zero);
+            pausePracticeText = CreateText("实践记录", card.transform, string.Empty, 15,
+                TextAnchor.MiddleCenter, new Color(.48f, .90f, .88f));
+            pausePracticeText.lineSpacing = 1.12f;
+            SetRect(pausePracticeText.rectTransform, new Vector2(.10f, .615f), new Vector2(.90f, .685f), Vector2.zero, Vector2.zero);
+            var controls = CreateText("暂停操作", card.transform, "WASD  行走     鼠标  环绕镜头\nSPACE  跳跃     左 / 右键（J / K）声纹打击\nE  聆听魂音（战斗开始后按提示回应）", 19, TextAnchor.MiddleCenter, new Color(0.74f, 0.87f, 0.93f));
+            SetRect(controls.rectTransform, new Vector2(0.09f, 0.445f), new Vector2(0.91f, 0.595f), Vector2.zero, Vector2.zero);
+            pauseResumeButton = CreateButton("继续游戏", card.transform, "继 续 聆 听", new Color(0.62f, 0.18f, 0.07f, 0.98f));
+            SetRect(pauseResumeButton.GetComponent<RectTransform>(), new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.44f), Vector2.zero, Vector2.zero);
+            pauseResumeButton.onClick.AddListener(TogglePause);
+            pauseSettingsButton = CreateButton("设置与成就", card.transform, "设 置 · 成 就", new Color(.13f, .16f, .34f, .98f));
+            SetRect(pauseSettingsButton.GetComponent<RectTransform>(), new Vector2(.18f, .20f), new Vector2(.49f, .31f), Vector2.zero, Vector2.zero);
+            pauseSettingsButton.onClick.AddListener(OpenPauseSettings);
+            pauseRestartButton = CreateButton("重新开始", card.transform, "重 新 启 程", new Color(0.06f, 0.24f, 0.31f, 0.98f));
+            SetRect(pauseRestartButton.GetComponent<RectTransform>(), new Vector2(.51f, .20f), new Vector2(.82f, .31f), Vector2.zero, Vector2.zero);
+            pauseRestartButton.onClick.AddListener(RestartFromPause);
+            pauseQuitButton = CreateButton("退出游戏", card.transform, "退 出 游 戏", new Color(0.30f, 0.07f, 0.08f, 0.98f));
+            SetRect(pauseQuitButton.GetComponent<RectTransform>(), new Vector2(0.18f, 0.07f), new Vector2(0.82f, 0.18f), Vector2.zero, Vector2.zero);
+            pauseQuitButton.onClick.AddListener(QuitGame);
+            var hint = CreateText("暂停提示", card.transform, "ESC  返回游戏", 14, TextAnchor.MiddleCenter, new Color(0.48f, 0.72f, 0.79f));
+            SetRect(hint.rectTransform, new Vector2(0.15f, 0.005f), new Vector2(0.85f, 0.06f), Vector2.zero, Vector2.zero);
+            BuildPauseSettingsUI();
             pausePanel.SetActive(false);
+        }
+
+        private void BuildPauseSettingsUI()
+        {
+            pauseSettingsPanel = CreatePanel("暂停设置与成就页", pausePanel.transform,
+                new Color(.003f, .010f, .016f, .94f), Vector2.zero, Vector2.one);
+            GameObject card = CreatePanel("设置成就主卡", pauseSettingsPanel.transform,
+                new Color(.010f, .042f, .055f, .99f), new Vector2(.18f, .075f), new Vector2(.82f, .925f));
+            PolishPanel(card, new Color(.30f, .84f, .90f, .70f));
+            Text eyebrow = CreateText("设置成就眉题", card.transform, "OFFLINE ARCHIVE  /  LOCAL USER DATA", 14,
+                TextAnchor.MiddleCenter, new Color(.42f, .82f, .88f));
+            SetRect(eyebrow.rectTransform, new Vector2(.10f, .89f), new Vector2(.90f, .95f), Vector2.zero, Vector2.zero);
+            Text title = CreateText("设置成就标题", card.transform, "设 置 · 成 就 档 案", 40,
+                TextAnchor.MiddleCenter, new Color(1f, .76f, .30f));
+            SetRect(title.rectTransform, new Vector2(.08f, .79f), new Vector2(.92f, .89f), Vector2.zero, Vector2.zero);
+
+            GameObject volumeCard = CreatePanel("本地音量设置", card.transform,
+                new Color(.015f, .076f, .091f, .94f), new Vector2(.075f, .675f), new Vector2(.925f, .785f));
+            PolishPanel(volumeCard, new Color(.26f, .68f, .74f, .40f));
+            settingsVolumeText = CreateText("主音量文字", volumeCard.transform, string.Empty, 18,
+                TextAnchor.MiddleCenter, new Color(.84f, .94f, .94f));
+            SetRect(settingsVolumeText.rectTransform, new Vector2(.22f, .08f), new Vector2(.78f, .92f), Vector2.zero, Vector2.zero);
+            pauseVolumeDownButton = CreateButton("降低音量", volumeCard.transform, "－", new Color(.07f, .21f, .28f, .98f));
+            SetRect(pauseVolumeDownButton.GetComponent<RectTransform>(), new Vector2(.04f, .14f), new Vector2(.18f, .86f), Vector2.zero, Vector2.zero);
+            pauseVolumeDownButton.onClick.AddListener(() => AdjustMasterVolume(-.10f));
+            pauseVolumeUpButton = CreateButton("提高音量", volumeCard.transform, "＋", new Color(.10f, .28f, .27f, .98f));
+            SetRect(pauseVolumeUpButton.GetComponent<RectTransform>(), new Vector2(.82f, .14f), new Vector2(.96f, .86f), Vector2.zero, Vector2.zero);
+            pauseVolumeUpButton.onClick.AddListener(() => AdjustMasterVolume(.10f));
+
+            settingsAchievementCountText = CreateText("成就完成度", card.transform, string.Empty, 18,
+                TextAnchor.MiddleLeft, new Color(.44f, .92f, 1f));
+            SetRect(settingsAchievementCountText.rectTransform, new Vector2(.09f, .605f), new Vector2(.91f, .665f), Vector2.zero, Vector2.zero);
+            GameObject achievementCard = CreatePanel("成就列表底板", card.transform,
+                new Color(.008f, .028f, .038f, .94f), new Vector2(.075f, .18f), new Vector2(.925f, .605f));
+            PolishPanel(achievementCard, new Color(.25f, .58f, .64f, .38f));
+            settingsAchievementListText = CreateText("成就列表", achievementCard.transform, string.Empty, 15,
+                TextAnchor.UpperLeft, new Color(.80f, .90f, .91f));
+            settingsAchievementListText.supportRichText = true;
+            settingsAchievementListText.lineSpacing = 1.18f;
+            SetRect(settingsAchievementListText.rectTransform, new Vector2(.045f, .04f), new Vector2(.955f, .96f), Vector2.zero, Vector2.zero);
+
+            Text storageHint = CreateText("存档位置说明", card.transform,
+                "进度保存在当前 Windows 用户的 LocalLow / 梅溪回响 / SaveData 中 · 本地原子存档", 13,
+                TextAnchor.MiddleCenter, new Color(.48f, .70f, .75f));
+            SetRect(storageHint.rectTransform, new Vector2(.08f, .11f), new Vector2(.92f, .17f), Vector2.zero, Vector2.zero);
+            pauseTerminalButton = CreateButton("打开终端", card.transform, "终 端",
+                new Color(.18f, .105f, .30f, .99f));
+            SetRect(pauseTerminalButton.GetComponent<RectTransform>(), new Vector2(.10f, .025f), new Vector2(.47f, .105f), Vector2.zero, Vector2.zero);
+            pauseTerminalButton.onClick.AddListener(OpenTerminal);
+            pauseSettingsBackButton = CreateButton("返回暂停页", card.transform, "返 回 暂 停 页",
+                new Color(.055f, .30f, .34f, .99f));
+            SetRect(pauseSettingsBackButton.GetComponent<RectTransform>(), new Vector2(.53f, .025f), new Vector2(.90f, .105f), Vector2.zero, Vector2.zero);
+            pauseSettingsBackButton.onClick.AddListener(ClosePauseSettings);
+            BuildTerminalUI();
+            pauseSettingsPanel.SetActive(false);
+        }
+
+        private void BuildTerminalUI()
+        {
+            terminalPanel = CreatePanel("开发终端模态层", pauseSettingsPanel.transform,
+                new Color(.001f, .005f, .010f, .94f), Vector2.zero, Vector2.one);
+            GameObject card = CreatePanel("终端主卡", terminalPanel.transform,
+                new Color(.006f, .024f, .031f, .995f), new Vector2(.205f, .19f), new Vector2(.795f, .81f));
+            PolishPanel(card, new Color(.32f, .96f, .82f, .72f));
+
+            Text eyebrow = CreateText("终端眉题", card.transform, "MEIXI LOCAL COMMAND CONSOLE  /  WHITELIST MODE", 13,
+                TextAnchor.MiddleCenter, new Color(.38f, .88f, .76f));
+            SetRect(eyebrow.rectTransform, new Vector2(.08f, .87f), new Vector2(.92f, .95f), Vector2.zero, Vector2.zero);
+            Text title = CreateText("终端标题", card.transform, "声 纹 终 端", 38,
+                TextAnchor.MiddleCenter, new Color(1f, .75f, .28f));
+            SetRect(title.rectTransform, new Vector2(.08f, .73f), new Vector2(.92f, .87f), Vector2.zero, Vector2.zero);
+            Text help = CreateText("终端帮助", card.transform,
+                "输入授权指令后按 Enter 执行\nexit/zjh  退出游戏    ·    game-two/zjh  保存为第二章并重新载入", 15,
+                TextAnchor.MiddleCenter, new Color(.72f, .84f, .86f));
+            help.lineSpacing = 1.12f;
+            SetRect(help.rectTransform, new Vector2(.08f, .57f), new Vector2(.92f, .73f), Vector2.zero, Vector2.zero);
+
+            GameObject inputPlate = CreatePanel("终端输入框", card.transform,
+                new Color(.008f, .070f, .068f, .98f), new Vector2(.085f, .41f), new Vector2(.915f, .55f));
+            PolishPanel(inputPlate, new Color(.30f, .90f, .76f, .48f));
+            terminalInput = inputPlate.AddComponent<InputField>();
+            terminalInput.targetGraphic = inputPlate.GetComponent<Image>();
+            terminalInput.lineType = InputField.LineType.SingleLine;
+            terminalInput.contentType = InputField.ContentType.Standard;
+            terminalInput.characterLimit = 64;
+            terminalInput.caretColor = new Color(.72f, 1f, .88f);
+            terminalInput.selectionColor = new Color(.18f, .72f, .64f, .55f);
+
+            Text inputText = CreateText("终端输入文字", inputPlate.transform, string.Empty, 20,
+                TextAnchor.MiddleLeft, new Color(.78f, 1f, .88f));
+            SetRect(inputText.rectTransform, new Vector2(.04f, .08f), new Vector2(.96f, .92f), Vector2.zero, Vector2.zero);
+            inputText.raycastTarget = true;
+            Text placeholder = CreateText("终端输入提示", inputPlate.transform, "请输入指令…", 20,
+                TextAnchor.MiddleLeft, new Color(.40f, .66f, .61f, .82f));
+            placeholder.fontStyle = FontStyle.Italic;
+            SetRect(placeholder.rectTransform, new Vector2(.04f, .08f), new Vector2(.96f, .92f), Vector2.zero, Vector2.zero);
+            terminalInput.textComponent = inputText;
+            terminalInput.placeholder = placeholder;
+
+            terminalOutput = CreateText("终端输出", card.transform, "等待输入授权指令。", 15,
+                TextAnchor.MiddleCenter, new Color(.54f, .84f, .79f));
+            SetRect(terminalOutput.rectTransform, new Vector2(.08f, .27f), new Vector2(.92f, .39f), Vector2.zero, Vector2.zero);
+            terminalSubmitButton = CreateButton("执行终端指令", card.transform, "执 行",
+                new Color(.045f, .32f, .27f, .99f));
+            SetRect(terminalSubmitButton.GetComponent<RectTransform>(), new Vector2(.10f, .08f), new Vector2(.47f, .23f), Vector2.zero, Vector2.zero);
+            terminalSubmitButton.onClick.AddListener(SubmitTerminalCommand);
+            terminalCloseButton = CreateButton("关闭终端", card.transform, "返 回",
+                new Color(.15f, .14f, .25f, .99f));
+            SetRect(terminalCloseButton.GetComponent<RectTransform>(), new Vector2(.53f, .08f), new Vector2(.90f, .23f), Vector2.zero, Vector2.zero);
+            terminalCloseButton.onClick.AddListener(CloseTerminal);
+            terminalPanel.SetActive(false);
+        }
+
+        private void BuildDefeatUI()
+        {
+            defeatPanel = CreatePanel("回响力耗尽界面", canvas.transform, Color.white, Vector2.zero, Vector2.one);
+            ApplyTexture(defeatPanel, "Art/ChapterBackdrop");
+            Canvas defeatCanvas = defeatPanel.AddComponent<Canvas>();
+            defeatCanvas.overrideSorting = true;
+            defeatCanvas.sortingOrder = 600;
+            defeatPanel.AddComponent<GraphicRaycaster>();
+            var veil = CreatePanel("失败背景雾幕", defeatPanel.transform,
+                new Color(0.004f, 0.012f, 0.018f, 0.84f), Vector2.zero, Vector2.one);
+            veil.GetComponent<Image>().raycastTarget = false;
+            var cyanGlow = CreatePanel("溪蓝余响", defeatPanel.transform,
+                new Color(0.02f, 0.42f, 0.48f, 0.16f), new Vector2(0f, 0.16f), new Vector2(0.56f, 0.84f));
+            cyanGlow.GetComponent<Image>().raycastTarget = false;
+            var redGlow = CreatePanel("失声暗红", defeatPanel.transform,
+                new Color(0.52f, 0.018f, 0.035f, 0.14f), new Vector2(0.44f, 0.16f), new Vector2(1f, 0.84f));
+            redGlow.GetComponent<Image>().raycastTarget = false;
+            var card = CreatePanel("旅途终止卡片", defeatPanel.transform,
+                new Color(0.010f, 0.035f, 0.047f, 0.975f), new Vector2(0.255f, 0.135f), new Vector2(0.745f, 0.865f));
+            PolishPanel(card, new Color(0.28f, 0.82f, 0.90f, 0.74f));
+            var topLine = CreatePanel("失声金线", card.transform, new Color(1f, .60f, .18f, .90f),
+                new Vector2(.09f, .904f), new Vector2(.91f, .909f));
+            topLine.GetComponent<Image>().raycastTarget = false;
+            var sigil = CreatePanel("破碎魂音印记", card.transform, new Color(.62f, .90f, .94f, .72f),
+                new Vector2(.43f, .76f), new Vector2(.57f, .91f)).GetComponent<Image>();
+            sigil.sprite = beatSigilSprite;
+            sigil.preserveAspect = true;
+            sigil.raycastTarget = false;
+            var eyebrow = CreateText("失败眉题", card.transform, "MEIXI VOICE ARCHIVE  /  SIGNAL LOST", 14,
+                TextAnchor.MiddleCenter, new Color(0.42f, 0.82f, 0.88f));
+            SetRect(eyebrow.rectTransform, new Vector2(.08f, .70f), new Vector2(.92f, .77f), Vector2.zero, Vector2.zero);
+            var title = CreateText("失败标题", card.transform, "回 响 暂 时 沉 寂", 46,
+                TextAnchor.MiddleCenter, new Color(1f, .73f, .30f));
+            title.font = displayFont != null ? displayFont : uiFont;
+            SetRect(title.rectTransform, new Vector2(.06f, .57f), new Vector2(.94f, .70f), Vector2.zero, Vector2.zero);
+            DecorateText(title, new Color(0f, .05f, .07f, .96f), new Vector2(4f, -4f), true);
+            var body = CreateText("失败说明", card.transform,
+                "溪灵的噪声暂时压过了你的节拍。\n这不是终点——重新聆听提示，再把动作落在光圈收束的一刻。", 19,
+                TextAnchor.MiddleCenter, new Color(.84f, .92f, .92f));
+            SetRect(body.rectTransform, new Vector2(.10f, .43f), new Vector2(.90f, .57f), Vector2.zero, Vector2.zero);
+            var archiveCard = CreatePanel("本次回响记录", card.transform,
+                new Color(.015f, .075f, .090f, .92f), new Vector2(.12f, .30f), new Vector2(.88f, .43f));
+            PolishPanel(archiveCard, new Color(.26f, .68f, .74f, .44f));
+            defeatSummaryText = CreateText("失败统计", archiveCard.transform,
+                "最佳连击  0    ·    成功回应  0    ·    失拍  0", 17,
+                TextAnchor.MiddleCenter, new Color(.72f, .92f, .92f));
+            SetRect(defeatSummaryText.rectTransform, new Vector2(.04f, .08f), new Vector2(.96f, .92f), Vector2.zero, Vector2.zero);
+            defeatRetryButton = CreateButton("重新旅途", card.transform, "重 新 聆 听 · 从 本 章 开 始", new Color(.06f, .32f, .36f, .98f));
+            SetRect(defeatRetryButton.GetComponent<RectTransform>(), new Vector2(.12f, .15f), new Vector2(.58f, .265f), Vector2.zero, Vector2.zero);
+            defeatRetryButton.onClick.AddListener(RestartAfterDefeat);
+            defeatQuitButton = CreateButton("失败退出", card.transform, "返 回 寂 静", new Color(.26f, .065f, .075f, .98f));
+            SetRect(defeatQuitButton.GetComponent<RectTransform>(), new Vector2(.61f, .15f), new Vector2(.88f, .265f), Vector2.zero, Vector2.zero);
+            defeatQuitButton.onClick.AddListener(QuitGame);
+            var hint = CreateText("失败快捷提示", card.transform, "ENTER  重新聆听    ·    鼠标选择", 13,
+                TextAnchor.MiddleCenter, new Color(.42f, .70f, .75f));
+            SetRect(hint.rectTransform, new Vector2(.20f, .055f), new Vector2(.80f, .12f), Vector2.zero, Vector2.zero);
+            defeatPanel.SetActive(false);
+        }
+
+        private void BuildGameplayGuideUI()
+        {
+            gameplayGuidePanel = CreatePanel("玩法与面板说明", canvas.transform,
+                new Color(.004f, .012f, .018f, .90f), Vector2.zero, Vector2.one);
+            Canvas guideCanvas = gameplayGuidePanel.AddComponent<Canvas>();
+            guideCanvas.overrideSorting = true;
+            guideCanvas.sortingOrder = 560;
+            gameplayGuidePanel.AddComponent<GraphicRaycaster>();
+            var card = CreatePanel("玩法说明主卡", gameplayGuidePanel.transform,
+                new Color(.010f, .045f, .060f, .985f), new Vector2(.17f, .12f), new Vector2(.83f, .88f));
+            PolishPanel(card, new Color(.28f, .86f, .92f, .72f));
+            var line = CreatePanel("教学金线", card.transform, new Color(1f, .62f, .18f, .90f),
+                new Vector2(.08f, .90f), new Vector2(.92f, .905f));
+            line.GetComponent<Image>().raycastTarget = false;
+            var archive = CreateText("教学档案标", card.transform, "MEIXI FIELD TERMINAL  /  QUICK GUIDE", 14,
+                TextAnchor.MiddleCenter, new Color(.44f, .82f, .88f));
+            SetRect(archive.rectTransform, new Vector2(.12f, .82f), new Vector2(.88f, .89f), Vector2.zero, Vector2.zero);
+            gameplayGuideTitle = CreateText("教学标题", card.transform, "调 研 终 端", 45,
+                TextAnchor.MiddleCenter, new Color(1f, .76f, .30f));
+            gameplayGuideTitle.font = displayFont != null ? displayFont : uiFont;
+            SetRect(gameplayGuideTitle.rectTransform, new Vector2(.08f, .69f), new Vector2(.92f, .82f), Vector2.zero, Vector2.zero);
+            gameplayGuideSubtitle = CreateText("教学副标题", card.transform, "面板数据与探索方式", 19,
+                TextAnchor.MiddleCenter, new Color(.64f, .90f, .94f));
+            SetRect(gameplayGuideSubtitle.rectTransform, new Vector2(.10f, .62f), new Vector2(.90f, .69f), Vector2.zero, Vector2.zero);
+            var dataCard = CreatePanel("面板数据说明底", card.transform,
+                new Color(.014f, .076f, .091f, .92f), new Vector2(.08f, .25f), new Vector2(.92f, .61f));
+            PolishPanel(dataCard, new Color(.24f, .64f, .70f, .38f));
+            gameplayGuideBody = CreateText("教学正文", dataCard.transform, string.Empty, 19,
+                TextAnchor.MiddleLeft, new Color(.86f, .94f, .94f));
+            SetRect(gameplayGuideBody.rectTransform, new Vector2(.055f, .08f), new Vector2(.945f, .92f), Vector2.zero, Vector2.zero);
+            gameplayGuideContinueButton = CreateButton("教学继续", card.transform, "我 已 了 解 · 开 始 聆 听",
+                new Color(.055f, .34f, .38f, .98f));
+            SetRect(gameplayGuideContinueButton.GetComponent<RectTransform>(), new Vector2(.27f, .11f), new Vector2(.73f, .21f), Vector2.zero, Vector2.zero);
+            gameplayGuideContinueButton.onClick.AddListener(DismissGameplayGuide);
+            var footer = CreateText("教学快捷提示", card.transform, "ENTER / SPACE / E  继续", 13,
+                TextAnchor.MiddleCenter, new Color(.44f, .72f, .78f));
+            SetRect(footer.rectTransform, new Vector2(.28f, .035f), new Vector2(.72f, .095f), Vector2.zero, Vector2.zero);
+            gameplayGuidePanel.SetActive(false);
+        }
+
+        private static bool IsAutomatedPresentationRun()
+        {
+            foreach (string argument in Environment.GetCommandLineArgs())
+            {
+                if (!argument.StartsWith("-meixi", StringComparison.OrdinalIgnoreCase)) continue;
+                if (argument.EndsWith("Capture", StringComparison.OrdinalIgnoreCase) ||
+                    argument.EndsWith("Smoke", StringComparison.OrdinalIgnoreCase) ||
+                    argument.Contains("Auto", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return Application.isBatchMode;
+        }
+
+        private void ShowGameplayGuide(string title, string subtitle, string body, string buttonLabel, Action callback,
+            bool forceForCapture = false)
+        {
+            if (gameplayGuidePanel == null || (!forceForCapture && IsAutomatedPresentationRun()))
+            {
+                callback?.Invoke();
+                return;
+            }
+
+            gameplayGuideCallback = callback;
+            gameplayGuidePreviousTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+            gameplayGuidePreviousAudioPause = AudioListener.pause;
+            gameplayGuideOpen = true;
+            gameplayGuideTitle.text = title;
+            gameplayGuideSubtitle.text = subtitle;
+            gameplayGuideBody.text = body;
+            Text buttonText = gameplayGuideContinueButton != null
+                ? gameplayGuideContinueButton.GetComponentInChildren<Text>(true) : null;
+            if (buttonText != null) buttonText.text = buttonLabel;
+            gameplayGuidePanel.SetActive(true);
+            gameplayGuidePanel.transform.SetAsLastSibling();
+            Time.timeScale = 0f;
+            AudioListener.pause = true;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            player?.ResetInputTransientState();
+            orbitCamera?.ClearInputAfterFocus();
+        }
+
+        private void DismissGameplayGuide()
+        {
+            if (!gameplayGuideOpen) return;
+            gameplayGuideOpen = false;
+            if (gameplayGuidePanel != null) gameplayGuidePanel.SetActive(false);
+            Time.timeScale = gameplayGuidePreviousTimeScale > 0f ? gameplayGuidePreviousTimeScale : 1f;
+            AudioListener.pause = gameplayGuidePreviousAudioPause;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            player?.ResetInputTransientState();
+            orbitCamera?.ClearInputAfterFocus();
+            Action callback = gameplayGuideCallback;
+            gameplayGuideCallback = null;
+            callback?.Invoke();
+        }
+
+        private void ShowExplorationGuide(Action callback, bool forceForCapture = false)
+        {
+            if (explorationGuideShown)
+            {
+                callback?.Invoke();
+                return;
+            }
+            explorationGuideShown = true;
+            ShowGameplayGuide("调 研 终 端", "面板数据与乡村探索",
+                "【左上】主线章节、当前任务与推进进度\n" +
+                "【右上】回响力、魂音数量、已取得的村民线索\n" +
+                "【中央指引】目标方向与距离；靠近人物或魂音时出现 E 提示\n\n" +
+                "WASD  行走    ·    鼠标  环绕镜头    ·    E  对话 / 采集\n" +
+                "SPACE  跳跃    ·    ESC  暂停与查看操作",
+                "进 入 第 一 章", callback, forceForCapture);
+        }
+
+        private void ShowBattleGuide(Action callback, bool forceForCapture = false)
+        {
+            if (battleGuideShown)
+            {
+                callback?.Invoke();
+                return;
+            }
+            battleGuideShown = true;
+            ShowGameplayGuide("溪 灵 对 拍", "先看指令，再听光圈收束",
+                "【中央魂音印记】由外向内收束；最亮的一刻就是有效拍点\n" +
+                "【中央操作提示】实心按键代表短按；出现环形进度时需要持续按住直至充满\n" +
+                "【底部水纹签】敌人阶段、阶段血量、判定结果与组合键说明\n\n" +
+                "J  近战突进：必须处于有效距离    ·    K  远程音符波 / 破谱\n" +
+                "SPACE  瞬身：红色锁定区收束时离开；落点过近仍会受伤\n" +
+                "后续会出现左右声部：短按跟随收束点，持续声部不要提前松开。\n" +
+                "阶段切换时会进入无伤休止，看到新提示后再开始下一拍。",
+                "同 步 节 拍 · 开 始 战 斗", callback, forceForCapture);
         }
 
         private static void PolishPanel(GameObject panel, Color edgeColor)
@@ -1979,51 +3197,111 @@ namespace MeixiEcho
 
         private void BuildDialogueUI()
         {
-            dialoguePanel = CreatePanel("电影式水纹对话", canvas.transform, Color.white, new Vector2(0.045f, 0.025f), new Vector2(0.955f, 0.315f));
+            dialoguePanel = CreatePanel("电影式水纹对话", canvas.transform, Color.white, new Vector2(0.035f, 0.025f), new Vector2(0.965f, 0.335f));
             ApplyTexture(dialoguePanel, "Art/QuestFrameV2");
             var archive = CreateText("声纹档案标记", dialoguePanel.transform, "MEIXI VOICE ARCHIVE  ·  乡村声音档案", 13, TextAnchor.MiddleLeft, new Color(0.42f, 0.76f, 0.80f));
-            SetRect(archive.rectTransform, new Vector2(0.17f, 0.84f), new Vector2(0.67f, 0.96f), Vector2.zero, Vector2.zero);
-            var portrait = CreatePanel("魂音说话者徽章", dialoguePanel.transform, new Color(0.06f, 0.20f, 0.25f, 0.98f), new Vector2(0.026f, 0.12f), new Vector2(0.145f, 0.88f));
+            SetRect(archive.rectTransform, new Vector2(0.205f, 0.86f), new Vector2(0.67f, 0.96f), Vector2.zero, Vector2.zero);
+            var portrait = CreatePanel("NPC肖像框", dialoguePanel.transform, new Color(0.012f, 0.045f, 0.060f, 0.98f), new Vector2(0.025f, 0.10f), new Vector2(0.185f, 0.91f));
             PolishPanel(portrait, new Color(0.24f, 0.82f, 0.92f, 0.48f));
             dialoguePortraitPlate = portrait.GetComponent<Image>();
-            // Unity 6 no longer ships UI/Skin/Knob.psd as a built-in resource.
-            // Use the built-in white texture instead so the HUD does not emit an
-            // error every time the editable scene starts.
-            Sprite roundSprite = Sprite.Create(Texture2D.whiteTexture,
-                new Rect(0f, 0f, Texture2D.whiteTexture.width, Texture2D.whiteTexture.height),
-                new Vector2(0.5f, 0.5f), 100f);
-            if (roundSprite != null)
-            {
-                dialoguePortraitPlate.sprite = roundSprite;
-                dialoguePortraitPlate.preserveAspect = true;
-            }
-            Image portraitRing = CreatePanel("肖像内圈", portrait.transform, new Color(1f, 0.62f, 0.18f, 0.12f), new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.92f)).GetComponent<Image>();
-            portraitRing.raycastTarget = false;
-            if (roundSprite != null)
-            {
-                portraitRing.sprite = roundSprite;
-                portraitRing.preserveAspect = true;
-            }
-            dialoguePortraitGlyph = CreateText("魂音徽记", portrait.transform, "林", 48, TextAnchor.MiddleCenter, new Color(1f, 0.78f, 0.34f));
-            SetRect(dialoguePortraitGlyph.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            DecorateText(dialoguePortraitGlyph, new Color(0f, 0.03f, 0.05f, 0.95f), new Vector2(3f, -3f), true);
+
+            var portraitImageObject = CreatePanel("NPC真实肖像", portrait.transform, Color.white, new Vector2(0.035f, 0.035f), new Vector2(0.965f, 0.965f));
+            ApplyTexture(portraitImageObject, "Art/NpcVillageElderPortrait");
+            dialoguePortraitImage = portraitImageObject.GetComponent<Image>();
+            dialoguePortraitImage.preserveAspect = true;
+            dialoguePortraitImage.raycastTarget = false;
+            npcDialoguePortraitSprite = dialoguePortraitImage.sprite;
+            childDialoguePortraitSprite = LoadPortraitSprite("Art/NpcVillageChildPortrait");
+            auntDialoguePortraitSprite = LoadPortraitSprite("Art/NpcVillageAuntPortrait");
+
+            playerDialoguePortraitSprite = LoadPortraitSprite("Art/LinMoDialoguePortrait");
+
+            var portraitShade = CreatePanel("肖像底部渐暗", portrait.transform, new Color(0.005f, 0.018f, 0.025f, 0.30f), new Vector2(0.035f, 0.035f), new Vector2(0.965f, 0.22f));
+            portraitShade.GetComponent<Image>().raycastTarget = false;
+            var portraitTag = CreateText("肖像标签", portrait.transform, "VOICE MEMORY", 11, TextAnchor.MiddleCenter, new Color(0.74f, 0.90f, 0.92f, 0.90f));
+            SetRect(portraitTag.rectTransform, new Vector2(0.08f, 0.04f), new Vector2(0.92f, 0.18f), Vector2.zero, Vector2.zero);
+
+            var speakerDivider = CreatePanel("说话者金线", dialoguePanel.transform, new Color(1f, 0.65f, 0.20f, 0.72f), new Vector2(0.198f, 0.18f), new Vector2(0.200f, 0.85f));
+            speakerDivider.GetComponent<Image>().raycastTarget = false;
             dialogueSpeaker = CreateText("说话者", dialoguePanel.transform, "林默", 28, TextAnchor.MiddleLeft, new Color(1f, 0.75f, 0.30f));
-            SetRect(dialogueSpeaker.rectTransform, new Vector2(0.17f, 0.64f), new Vector2(0.42f, 0.86f), Vector2.zero, Vector2.zero);
+            SetRect(dialogueSpeaker.rectTransform, new Vector2(0.22f, 0.67f), new Vector2(0.48f, 0.85f), Vector2.zero, Vector2.zero);
             dialogueRole = CreateText("说话者身份", dialoguePanel.transform, "城市调研员", 15, TextAnchor.MiddleLeft, new Color(0.48f, 0.82f, 0.88f));
-            SetRect(dialogueRole.rectTransform, new Vector2(0.34f, 0.66f), new Vector2(0.64f, 0.83f), Vector2.zero, Vector2.zero);
+            SetRect(dialogueRole.rectTransform, new Vector2(0.22f, 0.57f), new Vector2(0.58f, 0.70f), Vector2.zero, Vector2.zero);
             dialogueCounter = CreateText("对话进度", dialoguePanel.transform, "01 / 01", 14, TextAnchor.MiddleRight, new Color(0.52f, 0.76f, 0.80f));
             SetRect(dialogueCounter.rectTransform, new Vector2(0.78f, 0.69f), new Vector2(0.94f, 0.84f), Vector2.zero, Vector2.zero);
-            dialogueText = CreateText("对白", dialoguePanel.transform, "", 27, TextAnchor.UpperLeft, new Color(0.96f, 0.98f, 0.97f));
-            SetRect(dialogueText.rectTransform, new Vector2(0.17f, 0.15f), new Vector2(0.94f, 0.66f), Vector2.zero, Vector2.zero);
+            dialogueText = CreateText("对白", dialoguePanel.transform, "", 25, TextAnchor.UpperLeft, new Color(0.96f, 0.98f, 0.97f));
+            SetRect(dialogueText.rectTransform, new Vector2(0.22f, 0.14f), new Vector2(0.94f, 0.57f), Vector2.zero, Vector2.zero);
             var hint = CreateText("继续提示", dialoguePanel.transform, "E / SPACE  继续  ◆", 17, TextAnchor.LowerRight, new Color(0.55f, 0.90f, 1f));
             SetRect(hint.rectTransform, new Vector2(0.70f, 0.01f), new Vector2(0.94f, 0.17f), Vector2.zero, Vector2.zero);
             hint.gameObject.AddComponent<FancyTextPulse>().Fade = true;
+            dialoguePanel.AddComponent<MeixiUiPanelReveal>().Configure(.20f, .965f);
             dialoguePanel.SetActive(false);
+        }
+
+        private static Sprite LoadPortraitSprite(string resourcePath)
+        {
+            Texture2D texture = Resources.Load<Texture2D>(resourcePath);
+            return texture == null ? null : Sprite.Create(texture,
+                new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
         }
 
         private void BuildRhythmUI()
         {
             rhythmPanel = CreatePanel("三维节拍战斗HUD", canvas.transform, Color.clear, Vector2.zero, Vector2.one);
+            leftHandCuePlate = CreatePanel("第三阶段左手节拍台", rhythmPanel.transform,
+                new Color(.018f, .055f, .082f, .82f), new Vector2(.225f, .642f), new Vector2(.425f, .710f));
+            PolishPanel(leftHandCuePlate, new Color(.22f, .82f, 1f, .70f));
+            rightHandCuePlate = CreatePanel("第三阶段右手节拍台", rhythmPanel.transform,
+                new Color(.075f, .028f, .055f, .82f), new Vector2(.575f, .642f), new Vector2(.775f, .710f));
+            PolishPanel(rightHandCuePlate, new Color(1f, .42f, .22f, .70f));
+            Text leftTrackMark = CreateText("左手轨道标", leftHandCuePlate.transform, "", 13,
+                TextAnchor.MiddleCenter, new Color(.42f, .88f, 1f));
+            SetRect(leftTrackMark.rectTransform, new Vector2(.08f, .84f), new Vector2(.92f, .96f), Vector2.zero, Vector2.zero);
+            Text rightTrackMark = CreateText("右手轨道标", rightHandCuePlate.transform, "", 13,
+                TextAnchor.MiddleCenter, new Color(1f, .64f, .30f));
+            SetRect(rightTrackMark.rectTransform, new Vector2(.08f, .84f), new Vector2(.92f, .96f), Vector2.zero, Vector2.zero);
+            leftHandHoldHalo = CreatePanel("左手长按外层蓄力光圈", rhythmPanel.transform,
+                new Color(1f, .70f, .08f, .28f), new Vector2(.185f, .275f), new Vector2(.465f, .745f)).GetComponent<Image>();
+            leftHandHoldHalo.sprite = beatSigilSprite;
+            leftHandHoldHalo.preserveAspect = true;
+            leftHandHoldHalo.raycastTarget = false;
+            leftHandRhythmFlash = CreatePanel("左手魂音节拍印记", rhythmPanel.transform,
+                new Color(.42f, .92f, 1f, .82f), new Vector2(.215f, .315f), new Vector2(.435f, .695f)).GetComponent<Image>();
+            leftHandRhythmFlash.sprite = beatSigilSprite;
+            leftHandRhythmFlash.preserveAspect = true;
+            leftHandRhythmFlash.raycastTarget = false;
+            leftHandHoldProgressFill = CreatePanel("左手长按径向充能", rhythmPanel.transform,
+                new Color(1f, .76f, .10f, .52f), new Vector2(.205f, .30f), new Vector2(.445f, .71f)).GetComponent<Image>();
+            leftHandHoldProgressFill.sprite = beatSigilSprite;
+            leftHandHoldProgressFill.preserveAspect = true;
+            leftHandHoldProgressFill.type = Image.Type.Filled;
+            leftHandHoldProgressFill.fillMethod = Image.FillMethod.Radial360;
+            leftHandHoldProgressFill.fillOrigin = 2;
+            leftHandHoldProgressFill.fillClockwise = true;
+            leftHandHoldProgressFill.fillAmount = 0f;
+            leftHandHoldProgressFill.raycastTarget = false;
+            leftHandActionName = CreateText("左手节拍动作", rhythmPanel.transform, "左 手 声 部", 23,
+                TextAnchor.MiddleCenter, new Color(.48f, .92f, 1f));
+            SetRect(leftHandActionName.rectTransform, new Vector2(.195f, .685f), new Vector2(.455f, .755f), Vector2.zero, Vector2.zero);
+            leftHandActionName.fontStyle = FontStyle.Bold;
+            DecorateText(leftHandActionName, Color.black, new Vector2(3f, -3f), true);
+            leftHandActionKey = CreateText("左手节拍按键", rhythmPanel.transform, "Q", 70,
+                TextAnchor.MiddleCenter, Color.white);
+            SetRect(leftHandActionKey.rectTransform, new Vector2(.265f, .425f), new Vector2(.385f, .575f), Vector2.zero, Vector2.zero);
+            leftHandActionKey.fontStyle = FontStyle.Bold;
+            DecorateText(leftHandActionKey, new Color(0f, .08f, .12f, .98f), new Vector2(4f, -4f), true);
+            for (int segment = 0; segment < leftHandHoldRingSegments.Length; segment++)
+            {
+                float angle = segment / (float)leftHandHoldRingSegments.Length * Mathf.PI * 2f;
+                Image pip = CreatePanel("长按进度环_" + segment, rhythmPanel.transform,
+                    new Color(.38f, .28f, .08f, .76f), new Vector2(.325f, .51f), new Vector2(.325f, .51f)).GetComponent<Image>();
+                RectTransform pipRect = pip.rectTransform;
+                pipRect.sizeDelta = new Vector2(14f, 34f);
+                pipRect.anchoredPosition = new Vector2(Mathf.Sin(angle) * 132f, Mathf.Cos(angle) * 132f);
+                pipRect.localRotation = Quaternion.Euler(0f, 0f, -angle * Mathf.Rad2Deg);
+                pip.raycastTarget = false;
+                leftHandHoldRingSegments[segment] = pip;
+            }
             rhythmFlash = CreatePanel("梅溪魂音节拍印记", rhythmPanel.transform, new Color(1f, 1f, 1f, 0.72f), new Vector2(0.415f, 0.34f), new Vector2(0.585f, 0.64f)).GetComponent<Image>();
             rhythmFlash.sprite = beatSigilSprite;
             rhythmFlash.preserveAspect = true;
@@ -2034,14 +3312,70 @@ namespace MeixiEcho
             combatActionKey = CreateText("节拍回应按键", rhythmPanel.transform, "·", 58, TextAnchor.MiddleCenter, Color.white);
             SetRect(combatActionKey.rectTransform, new Vector2(0.44f, 0.43f), new Vector2(0.56f, 0.56f), Vector2.zero, Vector2.zero);
             DecorateText(combatActionKey, new Color(0f, 0.08f, 0.12f, 0.95f), new Vector2(3f, -3f), true);
-            var ribbon = CreatePanel("战斗水纹签", rhythmPanel.transform, Color.white, new Vector2(0.30f, 0.025f), new Vector2(0.70f, 0.17f));
+            var ribbon = CreatePanel("战斗水纹签", rhythmPanel.transform, Color.white, new Vector2(0.10f, 0.012f), new Vector2(0.90f, 0.255f));
             ApplyTexture(ribbon, "Art/QuestFrameV2");
-            rhythmTitle = CreateText("节奏标题", ribbon.transform, "失 调 溪 灵   回响 12 / 12", 24, TextAnchor.MiddleCenter, new Color(1f, 0.78f, 0.30f));
-            SetRect(rhythmTitle.rectTransform, new Vector2(0.12f, 0.55f), new Vector2(0.90f, 0.88f), Vector2.zero, Vector2.zero);
+            rhythmTitle = CreateText("节奏标题", ribbon.transform, "BOSS  ·  失 调 溪 灵", 27, TextAnchor.MiddleCenter, new Color(1f, 0.78f, 0.30f));
+            SetRect(rhythmTitle.rectTransform, new Vector2(0.08f, 0.73f), new Vector2(0.92f, 0.95f), Vector2.zero, Vector2.zero);
+            combatPhaseLabel = CreateText("敌人阶段标签", ribbon.transform, "第一阶段 · 听潮", 17,
+                TextAnchor.MiddleCenter, new Color(0.62f, 0.94f, 1f));
+            SetRect(combatPhaseLabel.rectTransform, new Vector2(0.08f, 0.58f), new Vector2(0.92f, 0.74f), Vector2.zero, Vector2.zero);
+            var healthTrack = CreatePanel("敌人大型阶段进度槽", ribbon.transform,
+                new Color(0.015f, 0.030f, 0.038f, 0.96f), new Vector2(0.075f, 0.39f), new Vector2(0.925f, 0.56f));
+            PolishPanel(healthTrack, new Color(0.28f, 0.88f, 1f, 0.82f));
+            combatEnemyHealthChipFill = CreatePanel("敌人阶段延迟损伤条", healthTrack.transform,
+                new Color(1f, .88f, .52f, .72f), new Vector2(0.015f, 0.15f), new Vector2(0.985f, 0.85f)).GetComponent<Image>();
+            combatEnemyHealthChipFill.type = Image.Type.Filled;
+            combatEnemyHealthChipFill.fillMethod = Image.FillMethod.Horizontal;
+            combatEnemyHealthChipFill.fillOrigin = 0;
+            combatEnemyHealthChipFill.fillAmount = 1f;
+            combatEnemyHealthFill = CreatePanel("敌人阶段进度填充", healthTrack.transform,
+                new Color(0.12f, 0.88f, 1f, 0.98f), new Vector2(0.015f, 0.15f), new Vector2(0.985f, 0.85f)).GetComponent<Image>();
+            combatEnemyHealthFill.type = Image.Type.Filled;
+            combatEnemyHealthFill.fillMethod = Image.FillMethod.Horizontal;
+            combatEnemyHealthFill.fillOrigin = 0;
+            combatEnemyHealthFill.fillAmount = 1f;
+            for (int phase = 0; phase < combatPhaseSegments.Length; phase++)
+            {
+                float x0 = 0.075f + phase * 0.285f;
+                combatPhaseSegments[phase] = CreatePanel("阶段指示_" + (phase + 1), ribbon.transform,
+                    phase == 0 ? new Color(0.22f, 0.94f, 1f, 1f) : new Color(0.16f, 0.25f, 0.30f, 0.94f),
+                    new Vector2(x0, 0.275f), new Vector2(x0 + 0.255f, 0.365f)).GetComponent<Image>();
+                Text phaseMark = CreateText("阶段标记_" + (phase + 1), combatPhaseSegments[phase].transform,
+                    phase == 0 ? "阶 段 Ⅰ" : phase == 1 ? "阶 段 Ⅱ" : "阶 段 Ⅲ", 12,
+                    TextAnchor.MiddleCenter, Color.white);
+                SetRect(phaseMark.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                DecorateText(phaseMark, Color.black, new Vector2(1f, -1f), false);
+            }
             rhythmJudge = CreateText("动作判定", ribbon.transform, "听节拍 · 看指令 · 在魂音归一时回应", 18, TextAnchor.MiddleCenter, new Color(0.45f, 0.95f, 1f));
-            SetRect(rhythmJudge.rectTransform, new Vector2(0.12f, 0.27f), new Vector2(0.90f, 0.57f), Vector2.zero, Vector2.zero);
+            SetRect(rhythmJudge.rectTransform, new Vector2(0.08f, 0.14f), new Vector2(0.92f, 0.32f), Vector2.zero, Vector2.zero);
             rhythmScore = CreateText("动作提示", ribbon.transform, "SPACE 瞬身    ·    J 近战突进    ·    K 远程音符波", 14, TextAnchor.MiddleCenter, new Color(0.78f, 0.91f, 1f));
-            SetRect(rhythmScore.rectTransform, new Vector2(0.10f, 0.06f), new Vector2(0.92f, 0.30f), Vector2.zero, Vector2.zero);
+            SetRect(rhythmScore.rectTransform, new Vector2(0.06f, 0.015f), new Vector2(0.94f, 0.15f), Vector2.zero, Vector2.zero);
+
+            combatPhaseBanner = CreatePanel("阶段切换大字幕", canvas.transform,
+                new Color(0.008f, 0.015f, 0.022f, 0.90f), new Vector2(.285f, .405f), new Vector2(.715f, .595f));
+            Canvas phaseCanvas = combatPhaseBanner.AddComponent<Canvas>();
+            phaseCanvas.overrideSorting = true;
+            phaseCanvas.sortingOrder = 500;
+            combatPhaseBannerGroup = combatPhaseBanner.AddComponent<CanvasGroup>();
+            combatPhaseBannerGroup.alpha = 0f;
+            combatPhaseBannerText = CreateText("阶段切换文字", combatPhaseBanner.transform, "进入第二阶段", 40,
+                TextAnchor.MiddleCenter, new Color(1f, 0.68f, 0.20f));
+            combatPhaseBannerText.font = displayFont != null ? displayFont : uiFont;
+            SetRect(combatPhaseBannerText.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            DecorateText(combatPhaseBannerText, new Color(0f, 0f, 0f, 0.98f), new Vector2(5f, -5f), true);
+            Button phaseGuideButton = combatPhaseBanner.AddComponent<Button>();
+            phaseGuideButton.targetGraphic = combatPhaseBanner.GetComponent<Image>();
+            phaseGuideButton.onClick.AddListener(DismissPhaseThreeGuide);
+            combatPhaseBanner.SetActive(false);
+            leftHandCuePlate.SetActive(false);
+            rightHandCuePlate.SetActive(false);
+            leftHandHoldHalo.gameObject.SetActive(false);
+            leftHandHoldProgressFill.gameObject.SetActive(false);
+            leftHandRhythmFlash.gameObject.SetActive(false);
+            leftHandActionKey.gameObject.SetActive(false);
+            leftHandActionName.gameObject.SetActive(false);
+            foreach (Image segment in leftHandHoldRingSegments)
+                if (segment != null) segment.gameObject.SetActive(false);
             rhythmTrack = CreatePanel("兼容节拍轨", rhythmPanel.transform, Color.clear, new Vector2(0.49f, 0.49f), new Vector2(0.51f, 0.51f)).GetComponent<RectTransform>();
             rhythmPanel.SetActive(false);
         }
@@ -2050,14 +3384,25 @@ namespace MeixiEcho
         {
             chapterPanel = CreatePanel("章节转场", canvas.transform, Color.white, Vector2.zero, Vector2.one);
             ApplyTexture(chapterPanel, "Art/ChapterBackdrop");
-            chapterCardNumber = CreateText("章节编号", chapterPanel.transform, "第 一 章", 25, TextAnchor.MiddleCenter, new Color(0.45f, 0.85f, 0.94f));
-            SetRect(chapterCardNumber.rectTransform, new Vector2(0.32f, 0.63f), new Vector2(0.68f, 0.71f), Vector2.zero, Vector2.zero);
-            chapterCardTitle = CreateText("章节大标题", chapterPanel.transform, chapterNames[0], 66, TextAnchor.MiddleCenter, new Color(1f, 0.76f, 0.30f));
-            SetRect(chapterCardTitle.rectTransform, new Vector2(0.18f, 0.45f), new Vector2(0.82f, 0.63f), Vector2.zero, Vector2.zero);
-            DecorateText(chapterCardTitle, Color.black, new Vector2(4f, -4f), true);
-            chapterCardTitle.gameObject.AddComponent<FancyTextPulse>().Amount = 0.025f;
-            chapterCardSubtitle = CreateText("章节副题", chapterPanel.transform, chapterSubtitles[0], 25, TextAnchor.MiddleCenter, new Color(0.90f, 0.93f, 0.94f));
-            SetRect(chapterCardSubtitle.rectTransform, new Vector2(0.22f, 0.34f), new Vector2(0.78f, 0.43f), Vector2.zero, Vector2.zero);
+            Text archiveMark = CreateText("章节题签", chapterPanel.transform, "MEIXI  ·  VOICE MEMORY", 14,
+                TextAnchor.MiddleCenter, new Color(.42f, .76f, .78f, .86f));
+            SetRect(archiveMark.rectTransform, new Vector2(.24f, .695f), new Vector2(.76f, .74f), Vector2.zero, Vector2.zero);
+            chapterCardNumber = CreateText("章节编号", chapterPanel.transform, "第 一 章", 23, TextAnchor.MiddleCenter, new Color(0.55f, 0.87f, 0.87f));
+            chapterCardNumber.font = displayFont != null ? displayFont : uiFont;
+            SetRect(chapterCardNumber.rectTransform, new Vector2(0.34f, 0.62f), new Vector2(0.66f, 0.69f), Vector2.zero, Vector2.zero);
+            chapterCardTitle = CreateText("章节大标题", chapterPanel.transform, chapterNames[0], 60, TextAnchor.MiddleCenter, new Color(.96f, .82f, .53f));
+            chapterCardTitle.font = displayFont != null ? displayFont : uiFont;
+            SetRect(chapterCardTitle.rectTransform, new Vector2(0.16f, 0.445f), new Vector2(0.84f, 0.62f), Vector2.zero, Vector2.zero);
+            DecorateText(chapterCardTitle, new Color(0f, 0f, 0f, .78f), new Vector2(3f, -3f), false);
+            chapterCardTitle.gameObject.AddComponent<FancyTextPulse>().Amount = 0.012f;
+            chapterCardSubtitle = CreateText("章节副题", chapterPanel.transform, chapterSubtitles[0], 22, TextAnchor.MiddleCenter, new Color(0.88f, 0.92f, 0.90f));
+            chapterCardSubtitle.font = displayFont != null ? displayFont : uiFont;
+            SetRect(chapterCardSubtitle.rectTransform, new Vector2(0.22f, 0.345f), new Vector2(0.78f, 0.42f), Vector2.zero, Vector2.zero);
+            Text chapterOrnament = CreateText("章节余音纹", chapterPanel.transform, "—  ◇  —", 19,
+                TextAnchor.MiddleCenter, new Color(.55f, .78f, .72f, .72f));
+            chapterOrnament.font = displayFont != null ? displayFont : uiFont;
+            SetRect(chapterOrnament.rectTransform, new Vector2(.40f, .285f), new Vector2(.60f, .335f), Vector2.zero, Vector2.zero);
+            chapterPanel.AddComponent<MeixiUiPanelReveal>().Configure(.34f, 1.035f);
             chapterPanel.SetActive(false);
         }
 
@@ -2093,6 +3438,7 @@ namespace MeixiEcho
             SetRect(eyebrow.rectTransform, new Vector2(.20f, .62f), new Vector2(.80f, .70f), Vector2.zero, Vector2.zero);
             var title = CreateText("加载标题", loadingPanel.transform, "第 二 章 · 古 厝 里 的 旧 曲", 54,
                 TextAnchor.MiddleCenter, new Color(1f, .75f, .30f));
+            title.font = displayFont != null ? displayFont : uiFont;
             SetRect(title.rectTransform, new Vector2(.12f, .42f), new Vector2(.88f, .61f), Vector2.zero, Vector2.zero);
             DecorateText(title, Color.black, new Vector2(4f, -4f), true);
             var hint = CreateText("加载提示", loadingPanel.transform, "正在穿过村口长廊，读取古戏台声纹……", 22,
@@ -2113,6 +3459,13 @@ namespace MeixiEcho
         }
 
         private void RestartFirstChapter()
+        {
+            if (sceneTransitionActive) return;
+            MeixiLocalProgress.BeginNewJourney();
+            BeginScreenTransition("重 新 聆 听", ReloadFirstChapterScene, .48f, .08f, 0f);
+        }
+
+        private void ReloadFirstChapterScene()
         {
             Time.timeScale = 1f;
             UnityEngine.SceneManagement.SceneManager.LoadScene(
@@ -2195,6 +3548,9 @@ namespace MeixiEcho
         {
             paused = false;
             Time.timeScale = 1f;
+            MeixiLocalProgress.ApplyAudioSetting();
+            sceneTransitionActive = false;
+            chapterCardTransitionPending = false;
             titlePanel.SetActive(true);
             hudPanel.SetActive(false);
             dialoguePanel.SetActive(false);
@@ -2204,42 +3560,118 @@ namespace MeixiEcho
             if (loadingPanel != null) loadingPanel.SetActive(false);
             if (openingPanel != null) openingPanel.SetActive(false);
             if (pausePanel != null) pausePanel.SetActive(false);
+            ClosePauseSettings();
+            if (titleDeleteConfirmPanel != null) titleDeleteConfirmPanel.SetActive(false);
+            RefreshTitleSaveUi();
             if (interactionCard != null) interactionCard.SetActive(false);
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+            if (transitionGroup != null)
+            {
+                transitionGroup.alpha = 1f;
+                transitionGroup.blocksRaycasts = true;
+                transitionCaption.text = "梅 溪 回 响";
+                FadeBackToGame(.72f);
+            }
         }
 
         private void TryStartCaptureMode()
         {
             string[] arguments = Environment.GetCommandLineArgs();
             bool titleRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiTitleCapture", StringComparison.OrdinalIgnoreCase));
+            bool settingsRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiSettingsCapture", StringComparison.OrdinalIgnoreCase));
             bool openingRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiOpeningCapture", StringComparison.OrdinalIgnoreCase));
+            bool chapterRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiChapterCapture", StringComparison.OrdinalIgnoreCase));
             bool villageRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiVillageCapture", StringComparison.OrdinalIgnoreCase));
             bool dialogueRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiDialogueCapture", StringComparison.OrdinalIgnoreCase));
+            bool childRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiChildCapture", StringComparison.OrdinalIgnoreCase));
+            bool guideRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiGuideCapture", StringComparison.OrdinalIgnoreCase));
+            bool battleGuideRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiBattleGuideCapture", StringComparison.OrdinalIgnoreCase));
             bool animationRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiAnimationCapture", StringComparison.OrdinalIgnoreCase));
+            bool animationAltRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiAnimationAltCapture", StringComparison.OrdinalIgnoreCase));
             bool rhythmAutoRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiRhythmAuto", StringComparison.OrdinalIgnoreCase));
             bool finisherRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiFinisherCapture", StringComparison.OrdinalIgnoreCase));
             bool meleeRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiMeleeCapture", StringComparison.OrdinalIgnoreCase));
             bool rangedCounterRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiRangedCounterCapture", StringComparison.OrdinalIgnoreCase));
             bool wrongMeleeRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiWrongMeleeCapture", StringComparison.OrdinalIgnoreCase));
             bool flowRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiFlowCapture", StringComparison.OrdinalIgnoreCase));
-            bool requested = Application.isBatchMode || titleRequested || openingRequested || villageRequested || dialogueRequested || animationRequested || rhythmAutoRequested || finisherRequested || meleeRequested ||
-                             rangedCounterRequested || wrongMeleeRequested || flowRequested ||
+            bool defeatRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiDefeatCapture", StringComparison.OrdinalIgnoreCase));
+            bool phaseRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiPhaseCapture", StringComparison.OrdinalIgnoreCase));
+            bool healthRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiHealthCapture", StringComparison.OrdinalIgnoreCase));
+            bool dualHandRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiDualHandCapture", StringComparison.OrdinalIgnoreCase));
+            bool phaseThreeGuideRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiPhaseThreeGuideCapture", StringComparison.OrdinalIgnoreCase));
+            bool dashRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiEnemyDashCapture", StringComparison.OrdinalIgnoreCase));
+            bool tripleSlashRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiTripleSlashCapture", StringComparison.OrdinalIgnoreCase));
+            bool requested = Application.isBatchMode || titleRequested || settingsRequested || openingRequested || chapterRequested || villageRequested || dialogueRequested || childRequested || guideRequested || battleGuideRequested || animationRequested || animationAltRequested || rhythmAutoRequested || finisherRequested || meleeRequested ||
+                             rangedCounterRequested || wrongMeleeRequested || flowRequested || defeatRequested || phaseRequested || healthRequested || dualHandRequested || phaseThreeGuideRequested || dashRequested || tripleSlashRequested ||
                              Array.Exists(arguments, value => string.Equals(value, "-meixiCapture", StringComparison.OrdinalIgnoreCase));
             if (!requested) return;
             captureMode = true;
             if (titleRequested)
             {
                 captureFileName = "MeixiTitleCapture.png";
-                captureAt = Time.unscaledTime + 1.2f;
+                captureAt = float.PositiveInfinity;
+                titleCaptureWhenReady = true;
                 ShowTitle();
+                return;
+            }
+            if (settingsRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = "MeixiSettingsCapture.png";
+                captureAt = Time.unscaledTime + .65f;
+                started = true;
+                titlePanel.SetActive(false);
+                hudPanel.SetActive(true);
+                openingActive = false;
+                openingPanel.SetActive(false);
+                dialoguePanel.SetActive(false);
+                chapterPanel.SetActive(false);
+                endingPanel.SetActive(false);
+                SetPaused(true);
+                OpenPauseSettings();
                 return;
             }
             if (openingRequested)
             {
                 captureFileName = "MeixiOpeningCapture.png";
-                captureAt = Time.unscaledTime + 2.6f;
-                StartAdventure();
+                captureAt = float.PositiveInfinity;
+                openingCaptureWhenReady = true;
+                return;
+            }
+            if (chapterRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = "MeixiChapterCapture.png";
+                captureAt = Time.unscaledTime + .85f;
+                started = true;
+                titlePanel.SetActive(false);
+                hudPanel.SetActive(false);
+                openingActive = false;
+                openingPanel.SetActive(false);
+                dialoguePanel.SetActive(false);
+                endingPanel.SetActive(false);
+                pausePanel.SetActive(false);
+                ShowChapterCard(-1, "第 一 章", "没 有 声 音 的 村 庄",
+                    "城市的喧闹，在山路尽头悄然止息", null);
+                return;
+            }
+            if (guideRequested || battleGuideRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = battleGuideRequested ? "MeixiBattleGuideCapture.png" : "MeixiGuideCapture.png";
+                captureAt = Time.unscaledTime + .85f;
+                started = true;
+                titlePanel.SetActive(false);
+                hudPanel.SetActive(true);
+                openingActive = false;
+                openingPanel.SetActive(false);
+                dialoguePanel.SetActive(false);
+                chapterPanel.SetActive(false);
+                endingPanel.SetActive(false);
+                pausePanel.SetActive(false);
+                if (battleGuideRequested) ShowBattleGuide(null, true);
+                else ShowExplorationGuide(null, true);
                 return;
             }
             if (flowRequested)
@@ -2261,10 +3693,59 @@ namespace MeixiEcho
                 StartCoroutine(ValidateInteractionToCombatFlow());
                 return;
             }
+            if (childRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = "MeixiChildCapture.png";
+                captureAt = Time.unscaledTime + 1.4f;
+                started = true;
+                titlePanel.SetActive(false);
+                hudPanel.SetActive(false);
+                openingActive = false;
+                if (openingPanel != null) openingPanel.SetActive(false);
+                dialoguePanel.SetActive(false);
+                chapterPanel.SetActive(false);
+                endingPanel.SetActive(false);
+                pausePanel.SetActive(false);
+                if (interactionCard != null) interactionCard.SetActive(false);
+
+                VillageNpc3D childNpc = null;
+                foreach (VillageNpc3D npc in villageNpcs)
+                {
+                    if (npc != null && npc.DisplayName != null &&
+                        (npc.DisplayName.Contains("小孩", StringComparison.Ordinal) ||
+                         npc.DisplayName.Contains("阿禾", StringComparison.Ordinal)))
+                    {
+                        childNpc = npc;
+                        break;
+                    }
+                }
+                if (childNpc != null && orbitCamera != null)
+                {
+                    Camera previewCamera = orbitCamera.GetComponent<Camera>();
+                    Vector3 childForward = childNpc.transform.forward;
+                    childForward.y = 0f;
+                    if (childForward.sqrMagnitude < .01f) childForward = Vector3.forward;
+                    childForward.Normalize();
+                    Vector3 focus = childNpc.transform.position + Vector3.up * .72f;
+                    orbitCamera.enabled = false;
+                    previewCamera.transform.position = focus + childForward * 2.35f + Vector3.up * .05f;
+                    previewCamera.transform.rotation = Quaternion.LookRotation(focus - previewCamera.transform.position, Vector3.up);
+                    previewCamera.fieldOfView = 32f;
+                    previewCamera.nearClipPlane = .03f;
+                }
+                else Debug.LogError("[MeixiChildCapture] Child NPC or orbit camera was not available.");
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+                return;
+            }
             if (villageRequested || dialogueRequested)
             {
+                // Environment review captures must not land on the startup/title
+                // fade. Normal players still see the complete transition sequence.
+                CompleteTransitionImmediatelyForValidation();
                 captureFileName = dialogueRequested ? "MeixiDialogueCapture.png" : "MeixiVillageCapture.png";
-                captureAt = Time.unscaledTime + (dialogueRequested ? 1.8f : 2.2f);
+                captureAt = dialogueRequested ? float.PositiveInfinity : Time.unscaledTime + 2.2f;
                 started = true;
                 titlePanel.SetActive(false);
                 hudPanel.SetActive(!dialogueRequested);
@@ -2282,20 +3763,31 @@ namespace MeixiEcho
                     playerTransform.rotation = Quaternion.Euler(0f, 24f, 0f);
                 }
                 if (previewController != null) previewController.enabled = true;
-                if (dialogueRequested)
-                    ShowDialogue(new[]
-                    {
-                        "老村长｜人走远了，声音会替他认路。",
-                        "林默｜所以你们说的魂音，不是传说，而是所有人留下的记忆？"
-                    }, null);
+                if (villageRequested && orbitCamera != null)
+                {
+                    // Automated environment review needs a stable establishing shot.
+                    // The regular follow camera eases from its authored scene position
+                    // and can briefly pass through the player after the preview teleport.
+                    Camera previewCamera = orbitCamera.GetComponent<Camera>();
+                    orbitCamera.enabled = false;
+                    previewCamera.transform.position = new Vector3(-18.5f, 11.8f, -20.5f);
+                    previewCamera.transform.rotation = Quaternion.LookRotation(
+                        new Vector3(0.5f, 2.2f, 6.5f) - previewCamera.transform.position,
+                        Vector3.up);
+                }
+                if (dialogueRequested) StartCoroutine(PrepareDialogueCapture());
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 return;
             }
-            if (animationRequested)
+            if (animationRequested || animationAltRequested)
             {
-                captureFileName = "MeixiAnimationCapture.png";
-                captureAt = Time.unscaledTime + 1.86f;
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = animationAltRequested ? "MeixiAnimationAltCapture.png" : "MeixiAnimationCapture.png";
+                // Capture inside the locomotion window (0.00-0.88s). The previous
+                // 1.86s timestamp landed on the heavy-attack preview and could not
+                // reveal shoulder snapping or an asymmetric arm swing.
+                captureAt = float.PositiveInfinity;
                 started = true;
                 titlePanel.SetActive(false);
                 hudPanel.SetActive(false);
@@ -2306,7 +3798,14 @@ namespace MeixiEcho
                 endingPanel.SetActive(false);
                 pausePanel.SetActive(false);
                 if (interactionCard != null) interactionCard.SetActive(false);
-                player?.BeginAnimationPreview();
+                MeixiThirdPersonPlayer previewPlayer = player != null ? player : FindAnyObjectByType<MeixiThirdPersonPlayer>();
+                if (previewPlayer != null)
+                {
+                    player = previewPlayer;
+                    previewPlayer.BeginAnimationPreview();
+                    StartCoroutine(ScheduleAnimationCapture());
+                }
+                else Debug.LogError("[MeixiAnimationPreview] No runtime player was available for locomotion validation.");
                 orbitCamera?.BeginAnimationPreviewFocus();
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
@@ -2319,7 +3818,10 @@ namespace MeixiEcho
             wrongMeleeValidation = wrongMeleeRequested;
             captureFileName = finisherRequested ? "MeixiFinisherCapture.png" : meleeRequested ? "MeixiMeleeCapture.png" :
                 rangedCounterRequested ? "MeixiRangedCounterCapture.png" : wrongMeleeRequested ? "MeixiWrongMeleeCapture.png" :
-                rhythmAutoRequested ? "MeixiRhythmSuccessCapture.png" : "MeixiCapture.png";
+                rhythmAutoRequested ? "MeixiRhythmSuccessCapture.png" : defeatRequested ? "MeixiDefeatCapture.png" :
+                dualHandRequested ? "MeixiDualHandCapture.png" : dashRequested ? "MeixiEnemyDashCapture.png" :
+                tripleSlashRequested ? "MeixiTripleSlashCapture.png" : phaseRequested ? "MeixiPhaseCapture.png" :
+                phaseThreeGuideRequested ? "MeixiPhaseThreeGuideCapture.png" : healthRequested ? "MeixiHealthCapture.png" : "MeixiCapture.png";
             // 自动战斗验证由实际动作事件触发截图，避免机器帧率差异把画面截在动作之前。
             captureAt = Time.unscaledTime + (finisherRequested || rhythmAutoRequested || meleeRequested || rangedCounterRequested || wrongMeleeRequested ? 10f : 2.42f);
             started = true;
@@ -2351,25 +3853,150 @@ namespace MeixiEcho
             }
             if (captureController != null) captureController.enabled = true;
             pendingNode = nodes.Count > 0 ? nodes[0] : null;
-            StartChapterOneCombat();
+            ActivateChapterOneCombat();
             if (finisherRequested) creekSpirit?.PrepareFinisherValidation(chapterOneBeatStart);
+            else if (dashRequested) creekSpirit?.PrepareSpecificAttackValidation(3, chapterOneBeatStart);
             else if (rangedCounterRequested || wrongMeleeRequested) creekSpirit?.PrepareSpecificAttackValidation(2, chapterOneBeatStart);
             else if (rhythmAutoRequested || meleeRequested) creekSpirit?.PrepareAttackValidation(chapterOneBeatStart);
+            if (phaseRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                creekSpirit?.PreparePhaseValidation(2);
+                captureAt = Time.unscaledTime + 0.48f;
+            }
+            if (dualHandRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                creekSpirit?.PreparePhaseValidation(3);
+                captureAt = float.PositiveInfinity;
+                StartCoroutine(ScheduleDualHandHoldReviewCapture());
+            }
+            if (phaseThreeGuideRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                creekSpirit?.PreparePhaseValidation(3);
+                captureAt = Time.unscaledTime + .35f;
+            }
+            if (dashRequested)
+            {
+                captureAt = float.PositiveInfinity;
+                StartCoroutine(ScheduleCombatReviewCapture(1.72f));
+            }
+            if (tripleSlashRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                creekSpirit?.PreparePhaseValidation(2);
+                captureAt = float.PositiveInfinity;
+                StartCoroutine(ValidateTriplePhaseSlashCapture());
+            }
+            if (defeatRequested)
+            {
+                health = 1;
+                DamagePlayer();
+                captureAt = Time.unscaledTime + 0.48f;
+            }
+            else if (healthRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                health = Mathf.Max(0, health - 1);
+                UpdateHealth();
+                captureAt = Time.unscaledTime + 0.22f;
+            }
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        private IEnumerator ScheduleCombatReviewCapture(float delay)
+        {
+            // Heavy runtime scene generation can consume several seconds before the
+            // first rendered Update. Cross two frame boundaries before starting the
+            // review timer so captures cannot preserve the phase-one layout.
+            yield return null;
+            yield return null;
+            yield return new WaitForSecondsRealtime(Mathf.Max(.1f, delay));
+            captureAt = Time.unscaledTime;
+        }
+
+        private IEnumerator ScheduleDualHandHoldReviewCapture()
+        {
+            yield return null;
+            yield return null;
+            if (phaseThreeGuideOpen)
+            {
+                yield return new WaitForSecondsRealtime(.45f);
+                DismissPhaseThreeGuide();
+            }
+            float deadline = Time.unscaledTime + 10f;
+            while (Time.unscaledTime < deadline && (!leftHandCueActive || !leftHandHoldRequired))
+                yield return null;
+            if (leftHandCueActive && leftHandHoldRequired)
+            {
+                dualHandHoldPreviewActive = true;
+                leftHandHolding = true;
+                leftHandHoldStartedDsp = AudioSettings.dspTime;
+                float previewDuration = Mathf.Max(.22f, expectedLeftHandHoldDuration * .56f);
+                float startedAt = Time.unscaledTime;
+                while (Time.unscaledTime - startedAt < previewDuration)
+                {
+                    leftHandHoldProgress = Mathf.Clamp01((Time.unscaledTime - startedAt) /
+                        Mathf.Max(.05f, expectedLeftHandHoldDuration));
+                    if (leftHandActionName != null)
+                        leftHandActionName.text = $"长 按 中 · 不 要 松 开  {Mathf.RoundToInt(leftHandHoldProgress * 100f)}%";
+                    yield return null;
+                }
+            }
+            captureAt = Time.unscaledTime;
+        }
+
+        private IEnumerator ValidateTriplePhaseSlashCapture()
+        {
+            yield return null;
+            while (CombatPhaseResting) yield return null;
+            yield return new WaitForSecondsRealtime(.12f);
+            EnemyMusicAttackVfx3D.ClearAll();
+            TrackingAttackTelegraph3D.ClearAll();
+            MeleeForbiddenRing3D.ClearAll(false);
+            for (int step = 0; step < 3; step++)
+            {
+                player?.ExecuteAuthoredRhythmAction(CombatBeatAction.TripleJ, CombatInputKey.J, step);
+                yield return new WaitForSecondsRealtime(step == 2 ? .16f : .17f);
+            }
+            captureAt = Time.unscaledTime;
+        }
+
+        private IEnumerator ScheduleAnimationCapture()
+        {
+            // Startup asset import can advance realtime before the first rendered
+            // LateUpdate. Always cross a frame boundary, then sample stable gait.
+            yield return null;
+            yield return new WaitForSecondsRealtime(.72f);
+            captureAt = Time.unscaledTime;
+        }
+
+        private IEnumerator PrepareDialogueCapture()
+        {
+            yield return null;
+            ShowDialogue(new[]
+            {
+                "老村长｜人走远了，声音会替他认路。",
+                "林默｜所以你们说的魂音，不是传说，而是所有人留下的记忆？"
+            }, null);
+            ShowToast("新目标 · 聆听村落留下的声音", new Color(0.42f, 0.92f, 1f));
+            captureAt = Time.unscaledTime + 0.72f;
         }
 
         private IEnumerator ValidateInteractionToCombatFlow()
         {
             yield return null;
 
-            VillageNpc3D npc = villageNpcs.Find(candidate => candidate != null);
             int safety = 0;
-            if (npc != null)
+            foreach (VillageNpc3D npc in villageNpcs)
             {
+                if (npc == null) continue;
                 npc.Interact();
                 yield return null;
                 Debug.Log($"[MeixiValidation] NPC interaction dialogueOpen={dialogueOpen} npc={npc.DisplayName}");
+                safety = 0;
                 while (dialogueOpen && safety++ < 24)
                 {
                     AdvanceDialogue();
@@ -2399,7 +4026,9 @@ namespace MeixiEcho
             if (flowController != null) flowController.enabled = true;
 
             node.Interact();
-            yield return new WaitForSecondsRealtime(2.85f);
+            float presentationDeadline = Time.unscaledTime + 6f;
+            while (!dialogueOpen && Time.unscaledTime < presentationDeadline) yield return null;
+            while (sceneTransitionActive && Time.unscaledTime < presentationDeadline) yield return null;
             safety = 0;
             while (dialogueOpen && safety++ < 32)
             {
@@ -2456,13 +4085,291 @@ namespace MeixiEcho
 
         private void TogglePause()
         {
-            if (!started || complete) return;
-            paused = !paused;
+            if (!started || secondChapterLoading || finishingStrike || defeatOpen) return;
+            SetPaused(!paused);
+        }
+
+        private void OpenPauseSettings()
+        {
+            if (!paused || pauseSettingsPanel == null) return;
+            pauseSettingsOpen = true;
+            RefreshPauseSettingsUi();
+            pauseSettingsPanel.SetActive(true);
+            pauseSettingsPanel.transform.SetAsLastSibling();
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
+        private void ClosePauseSettings()
+        {
+            CloseTerminal();
+            pauseSettingsOpen = false;
+            if (pauseSettingsPanel != null) pauseSettingsPanel.SetActive(false);
+            if (paused && pausePanel != null) pausePanel.transform.SetAsLastSibling();
+        }
+
+        private void OpenTerminal()
+        {
+            if (!paused || !pauseSettingsOpen || terminalPanel == null) return;
+            terminalCommandExecuting = false;
+            terminalPanel.SetActive(true);
+            terminalPanel.transform.SetAsLastSibling();
+            if (terminalInput != null) terminalInput.text = string.Empty;
+            if (terminalOutput != null)
+            {
+                terminalOutput.text = "等待输入授权指令。";
+                terminalOutput.color = new Color(.54f, .84f, .79f);
+            }
+            StartCoroutine(FocusTerminalInputNextFrame());
+        }
+
+        private IEnumerator FocusTerminalInputNextFrame()
+        {
+            yield return null;
+            if (terminalPanel == null || !terminalPanel.activeSelf || terminalInput == null) yield break;
+            EventSystem.current?.SetSelectedGameObject(terminalInput.gameObject);
+            terminalInput.Select();
+            terminalInput.ActivateInputField();
+        }
+
+        private void CloseTerminal()
+        {
+            if (terminalInput != null) terminalInput.DeactivateInputField();
+            if (terminalPanel != null) terminalPanel.SetActive(false);
+        }
+
+        private void SubmitTerminalCommand()
+        {
+            if (terminalCommandExecuting || terminalInput == null || terminalOutput == null) return;
+            string command = (terminalInput.text ?? string.Empty).Trim().ToLowerInvariant();
+            if (command.Length == 0)
+            {
+                terminalOutput.text = "请输入指令后再执行。";
+                terminalOutput.color = new Color(1f, .70f, .34f);
+                ReactivateTerminalInput();
+                return;
+            }
+            switch (command)
+            {
+                case "exit/zjh":
+                    terminalCommandExecuting = true;
+                    terminalOutput.text = "指令已接受：正在安全退出游戏……";
+                    terminalOutput.color = new Color(.54f, 1f, .80f);
+                    StartCoroutine(QuitFromTerminalRoutine());
+                    break;
+                case "game-two/zjh":
+                    terminalCommandExecuting = true;
+                    // Only the resumable chapter state changes here. Statistics,
+                    // achievements and settings remain intact inside this atomic save.
+                    MeixiLocalProgress.SetGameplayChapter(2);
+                    terminalOutput.text = "指令已接受：进度已切换至第二章，正在重新载入……";
+                    terminalOutput.color = new Color(.54f, 1f, .80f);
+                    StartCoroutine(LoadChapterTwoFromTerminalRoutine());
+                    break;
+                default:
+                    terminalOutput.text = "未知指令。终端未修改任何游戏数据。";
+                    terminalOutput.color = new Color(1f, .45f, .36f);
+                    ReactivateTerminalInput();
+                    break;
+            }
+        }
+
+        private void ReactivateTerminalInput()
+        {
+            if (terminalInput == null) return;
+            terminalInput.Select();
+            terminalInput.ActivateInputField();
+            terminalInput.MoveTextEnd(false);
+        }
+
+        private IEnumerator QuitFromTerminalRoutine()
+        {
+            yield return new WaitForSecondsRealtime(.20f);
+            QuitGame();
+        }
+
+        private IEnumerator LoadChapterTwoFromTerminalRoutine()
+        {
+            yield return new WaitForSecondsRealtime(.28f);
+            CloseTerminal();
+            SetPaused(false);
+            started = true;
+            BeginScreenTransition("终 端 · 载 入 第 二 章", () =>
+            {
+                Time.timeScale = 1f;
+                AudioListener.pause = false;
+                UnityEngine.SceneManagement.SceneManager.LoadScene("MeixiTheatre");
+            }, .42f, .08f, 0f);
+        }
+
+        private void AdjustMasterVolume(float delta)
+        {
+            MeixiLocalProgress.SetMasterVolume(MeixiLocalProgress.MasterVolume + delta);
+            RefreshPauseSettingsUi();
+        }
+
+        private void RefreshPauseSettingsUi()
+        {
+            if (pausePracticeText != null)
+                pausePracticeText.text = $"乡 村 数 字 文 化 实 践  ·  第 {MeixiLocalProgress.PracticeNumber:00} 次\n" +
+                    $"累 计 倒 下  {MeixiLocalProgress.TotalDeaths:00}  次  ·  无伤重启不计入实践次数";
+            if (settingsVolumeText != null)
+                settingsVolumeText.text = $"主 音 量    {Mathf.RoundToInt(MeixiLocalProgress.MasterVolume * 100f)}%";
+            int unlocked = MeixiLocalProgress.UnlockedAchievementCount;
+            IReadOnlyList<MeixiAchievementDefinition> definitions = MeixiLocalProgress.AchievementDefinitions;
+            if (settingsAchievementCountText != null)
+                settingsAchievementCountText.text = $"成 就 档 案    {unlocked:00} / {definitions.Count:00}";
+            if (settingsAchievementListText == null) return;
+            var earned = new List<MeixiAchievementDefinition>();
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (MeixiLocalProgress.IsAchievementUnlocked(definitions[i].Id)) earned.Add(definitions[i]);
+            }
+            earned.Sort((left, right) =>
+            {
+                int rank = right.Rank.CompareTo(left.Rank);
+                return rank != 0 ? rank : string.Compare(left.Title, right.Title, StringComparison.Ordinal);
+            });
+            var builder = new StringBuilder(320);
+            for (int i = 0; i < earned.Count; i++)
+            {
+                MeixiAchievementDefinition definition = earned[i];
+                if (i > 0) builder.Append('\n');
+                builder.Append("<color=#");
+                builder.Append(MeixiLocalProgress.RankHexColor(definition.Rank));
+                builder.Append(">【");
+                builder.Append(MeixiLocalProgress.RankLabel(definition.Rank));
+                builder.Append("】</color>  ");
+                builder.Append(definition.Title);
+            }
+            settingsAchievementListText.text = earned.Count > 0 ? builder.ToString() : "暂 无 已 获 得 成 就";
+        }
+
+        private void SetPaused(bool value)
+        {
+            if (value && !paused)
+            {
+                pauseStartedDsp = AudioSettings.dspTime;
+            }
+            else if (!value && paused)
+            {
+                ShiftCombatTimeline(AudioSettings.dspTime - pauseStartedDsp);
+            }
+            paused = value;
+            if (!paused) ClosePauseSettings();
             Time.timeScale = paused ? 0f : 1f;
-            pausePanel.SetActive(paused);
-            Cursor.lockState = paused ? CursorLockMode.None : CursorLockMode.Locked;
-            Cursor.visible = paused;
+            AudioListener.pause = paused;
+            if (pausePanel != null)
+            {
+                pausePanel.SetActive(paused);
+                if (paused)
+                {
+                    pausePanel.transform.SetAsLastSibling();
+                    RefreshPauseSettingsUi();
+                }
+            }
+
+            bool presentationNeedsPointer = openingActive || dialogueOpen || complete || secondChapterLoading ||
+                                            (titlePanel != null && titlePanel.activeSelf);
+            bool showPointer = paused || presentationNeedsPointer;
+            Cursor.lockState = showPointer ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = showPointer;
             if (paused && interactionCard != null) interactionCard.SetActive(false);
+            player?.ResetInputTransientState();
+            orbitCamera?.ClearInputAfterFocus();
+            Debug.Log($"[MeixiPause] state={(paused ? "paused" : "resumed")} timeScale={Time.timeScale:F1} audioPaused={AudioListener.pause}");
+        }
+
+        private void ShiftCombatTimeline(double delta)
+        {
+            if (delta <= 0d || !chapterOneCombatActive) return;
+            chapterOneBeatStart += delta;
+            expectedCombatBeatDsp += delta;
+            currentThreatResolveDsp += delta;
+            expectedLeftHandBeatDsp += delta;
+            leftHandHoldStartedDsp += delta;
+            bufferedCombatKeyDsp += delta;
+            lastCombatSequenceInputDsp += delta;
+            combatPhaseRestUntilDsp += delta;
+            playerDamageImmuneUntilDsp += delta;
+            meleeCounterUntilDsp += delta;
+            for (int i = 0; i < expectedCombatStepDsps.Length; i++) expectedCombatStepDsps[i] += delta;
+            creekSpirit?.ShiftCombatTimeline(delta);
+        }
+
+        private void RestartFromPause()
+        {
+            SetPaused(false);
+            musicSource?.Stop();
+            MeixiLocalProgress.BeginNewJourney();
+            UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+        }
+
+        private void RestartAfterDefeat()
+        {
+            CombatDefeatOverlay3D.Clear();
+            defeatOpen = false;
+            Time.timeScale = 1f;
+            AudioListener.pause = false;
+            if (defeatPanel != null) defeatPanel.SetActive(false);
+            musicSource?.Stop();
+            MeixiLocalProgress.BeginNewJourney();
+            UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+        }
+
+        public void RestartAfterDefeatFromOverlay() => RestartAfterDefeat();
+
+        public void QuitAfterDefeatFromOverlay()
+        {
+            CombatDefeatOverlay3D.Clear();
+            QuitGame();
+        }
+
+        private void ShowDefeatPanel()
+        {
+            if (defeatOpen) return;
+            if (!IsAutomatedPresentationRun()) MeixiLocalProgress.RecordDeath();
+            if (sceneTransitionRoutine != null)
+            {
+                StopCoroutine(sceneTransitionRoutine);
+                sceneTransitionRoutine = null;
+            }
+            sceneTransitionActive = false;
+            if (transitionPanel != null) transitionPanel.SetActive(false);
+            defeatOpen = true;
+            chapterOneCombatActive = false;
+            combatBeatPending = false;
+            combatBeatSucceeded = false;
+            TrackingAttackTelegraph3D.ClearAll();
+            EnemyMusicAttackVfx3D.ClearAll();
+            MeleeForbiddenRing3D.ClearAll(false);
+            player?.ResetInputTransientState();
+            orbitCamera?.EndCombatFocus();
+            if (rhythmPanel != null) rhythmPanel.SetActive(false);
+            if (defeatPanel != null)
+            {
+                if (defeatSummaryText != null)
+                    defeatSummaryText.text = $"最佳连击  {chapterOneCombatBestCombo}    ·    " +
+                                             $"成功回应  {chapterOneCombatSuccesses}    ·    失拍  {chapterOneCombatMisses}";
+                defeatPanel.SetActive(true);
+                defeatPanel.transform.SetAsLastSibling();
+            }
+            Time.timeScale = 0f;
+            AudioListener.pause = true;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            Debug.Log("[MeixiDefeat] Echo depleted. Waiting for retry or quit selection.");
+        }
+
+        private void QuitGame()
+        {
+            Time.timeScale = 1f;
+            AudioListener.pause = false;
+            musicSource?.Stop();
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            Debug.Log("[MeixiPause] Quit requested from pause menu.");
+            Application.Quit(0);
         }
 
         private void UpdateNavigation()
@@ -2526,7 +4433,139 @@ namespace MeixiEcho
             interactionSubtitle.text = npc.Role + "  ·  按 E 聆听他的故事";
         }
 
+        private void UpdateTitleSaveMenuVisibility()
+        {
+            bool ready = titleScreenFx == null || titleScreenFx.IsReady;
+            if (titleSaveMenuGroup != null)
+            {
+                titleSaveMenuGroup.alpha = Mathf.MoveTowards(titleSaveMenuGroup.alpha, ready ? 1f : 0f,
+                    Time.unscaledDeltaTime * 4.5f);
+                bool available = ready && (titleDeleteConfirmPanel == null || !titleDeleteConfirmPanel.activeSelf);
+                titleSaveMenuGroup.interactable = available;
+                titleSaveMenuGroup.blocksRaycasts = available;
+            }
+            if (titlePrimaryButton != null && ready && (titleDeleteConfirmPanel == null || !titleDeleteConfirmPanel.activeSelf))
+                titlePrimaryButton.interactable = true;
+        }
+
+        private void RefreshTitleSaveUi()
+        {
+            if (titleContinueButton != null) titleContinueButton.interactable = true;
+            if (titleNewJourneyButton != null) titleNewJourneyButton.interactable = true;
+            if (titleDeleteSaveButton != null) titleDeleteSaveButton.interactable = true;
+            if (titleSaveSummaryText != null)
+            {
+                titleSaveSummaryText.text = "当前进度  ·  " + MeixiLocalProgress.GetContinueSummary();
+                titleSaveSummaryText.color = new Color(.58f, .94f, .90f);
+            }
+        }
+
+        private void HandleTitlePrimaryAction()
+        {
+            ContinueSavedJourney();
+        }
+
+        private void StartNewJourneyFromTitle()
+        {
+            if (started || sceneTransitionActive || (titleScreenFx != null && !titleScreenFx.IsReady)) return;
+            MeixiLocalProgress.ResetGameplayToChapterOne();
+            MeixiLocalProgress.PrepareGameplayLaunch();
+            StartAdventure();
+        }
+
+        private void ContinueSavedJourney()
+        {
+            if (started || sceneTransitionActive || (titleScreenFx != null && !titleScreenFx.IsReady)) return;
+            MeixiLocalProgress.PrepareGameplayLaunch();
+            MeixiLocalProgress.EnsureJourneyExists();
+            if (MeixiLocalProgress.CurrentChapter <= 1)
+            {
+                StartAdventure();
+                return;
+            }
+            started = true;
+            BeginScreenTransition("读 取 本 地 回 响", () =>
+            {
+                Time.timeScale = 1f;
+                AudioListener.pause = false;
+                UnityEngine.SceneManagement.SceneManager.LoadScene("MeixiTheatre");
+            }, .48f, .10f, 0f);
+        }
+
+        private void OpenNewJourneyConfirmation()
+        {
+            OpenTitleConfirmation(
+                "开 启 新 旅 途",
+                "游戏进程将回到第一章开端。\n已获得成就、累计死亡次数、实践记录与设置全部保留。",
+                "确 认 新 旅 途",
+                StartNewJourneyFromTitle,
+                new Color(.48f, .14f, .055f, .99f));
+        }
+
+        private void OpenDeleteSaveConfirmation()
+        {
+            OpenTitleConfirmation(
+                "删 除 本 地 存 档",
+                "将清除章节进度、旅途统计、全部成就与设置。\n数据会完全初始化；此操作无法撤销。",
+                "确 认 删 除",
+                ConfirmDeleteLocalSave,
+                new Color(.42f, .045f, .055f, .99f));
+        }
+
+        private void OpenTitleConfirmation(string title, string body, string acceptLabel,
+            Action confirmedAction, Color acceptColor)
+        {
+            if (titleDeleteConfirmPanel == null || started || sceneTransitionActive) return;
+            pendingTitleConfirmation = confirmedAction;
+            if (titleConfirmationTitleText != null) titleConfirmationTitleText.text = title;
+            if (titleConfirmationBodyText != null) titleConfirmationBodyText.text = body;
+            if (titleConfirmationAcceptButton != null)
+            {
+                Text label = titleConfirmationAcceptButton.GetComponentInChildren<Text>();
+                if (label != null) label.text = acceptLabel;
+                Image image = titleConfirmationAcceptButton.targetGraphic as Image;
+                if (image != null) image.color = acceptColor;
+            }
+            titleDeleteConfirmPanel.SetActive(true);
+            titleDeleteConfirmPanel.transform.SetAsLastSibling();
+            if (titlePrimaryButton != null) titlePrimaryButton.interactable = false;
+            if (titleSaveMenuGroup != null)
+            {
+                titleSaveMenuGroup.interactable = false;
+                titleSaveMenuGroup.blocksRaycasts = false;
+            }
+        }
+
+        private void CloseTitleConfirmation()
+        {
+            if (titleDeleteConfirmPanel != null) titleDeleteConfirmPanel.SetActive(false);
+            pendingTitleConfirmation = null;
+            bool ready = titleScreenFx == null || titleScreenFx.IsReady;
+            if (titlePrimaryButton != null) titlePrimaryButton.interactable = ready;
+            RefreshTitleSaveUi();
+        }
+
+        private void ConfirmTitleAction()
+        {
+            Action action = pendingTitleConfirmation;
+            CloseTitleConfirmation();
+            action?.Invoke();
+        }
+
+        private void ConfirmDeleteLocalSave()
+        {
+            MeixiLocalProgress.DeleteProgressSave();
+            RefreshTitleSaveUi();
+            ShowToast("本 地 存 档 已 删 除", new Color(1f, .62f, .28f));
+        }
+
         private void StartAdventure()
+        {
+            if (started || sceneTransitionActive || (titleScreenFx != null && !titleScreenFx.IsReady)) return;
+            BeginScreenTransition("返 回 梅 溪", BeginAdventurePresentation, .46f, .08f, .66f);
+        }
+
+        private void BeginAdventurePresentation()
         {
             if (started) return;
             // Awake already binds an authored scene. Rebinding here reset both
@@ -2534,40 +4573,60 @@ namespace MeixiEcho
             if (useSceneAuthoredWorld && (player == null || playerTransform == null || orbitCamera == null))
                 BindSceneAuthoredWorld();
             ResetGameplaySession();
+            // Scene-authored character references can be restored during the session
+            // reset. Re-apply the render-only character/environment upgrade here so
+            // the playable frame cannot fall back to the lower-detail bodies.
+            MeixiChapterOneEnvironment.Ensure();
             MeixiSecondChapterRoute.Ensure(this);
             started = true;
             Debug.Log("[Meixi] StartAdventure accepted; opening cinematic begins.");
             titlePanel.SetActive(false);
             hudPanel.SetActive(false);
             openingActive = true;
-            openingUntil = Time.unscaledTime + 5.2f;
             openingPanel.SetActive(true);
-            if (orbitCamera != null)
-            {
-                orbitCamera.BeginOpeningShot(5.2f);
-            }
-            else
-            {
-                Debug.LogError("Unable to start the opening shot: no gameplay camera is available.");
-            }
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            SetOpeningDiaryPage(0);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
         }
 
         private void ResetGameplaySession()
         {
+            gameplaySessionRevision++;
+            CancelFinalStrikeForSessionReset();
             Time.timeScale = 1f;
+            AudioListener.pause = false;
             paused = false;
             complete = false;
+            CombatDefeatOverlay3D.Clear();
+            gameplayGuideOpen = false;
+            gameplayGuideCallback = null;
+            explorationGuideShown = false;
+            battleGuideShown = false;
+            if (gameplayGuidePanel != null) gameplayGuidePanel.SetActive(false);
+            phaseThreeGuideOpen = false;
+            if (combatPhaseBannerGroup != null)
+            {
+                combatPhaseBannerGroup.alpha = 0f;
+                combatPhaseBannerGroup.blocksRaycasts = false;
+            }
+            if (combatPhaseBanner != null) combatPhaseBanner.SetActive(false);
             dialogueOpen = false;
             rhythmActive = false;
             openingActive = false;
             finishingStrike = false;
+            defeatOpen = false;
             chapterOneCombatActive = false;
             combatBeatPending = false;
             combatBeatSucceeded = false;
             threatDamageResolved = false;
             expectedCombatAction = CombatBeatAction.None;
+            currentThreatResolveDsp = 0d;
+            combatPhaseRestUntilDsp = 0d;
+            expectedCombatStepCount = 0;
+            expectedCombatStepIndex = 0;
+            bufferedCombatKey = CombatInputKey.None;
+            bufferedCombatKeyDsp = 0d;
+            lastCombatSequenceInputDsp = 0d;
             currentThreatType = -1;
             activeThreatId = -1;
             dodgedThreatId = -1;
@@ -2576,16 +4635,25 @@ namespace MeixiEcho
             playerDamageImmuneUntilDsp = 0d;
             chapterOneCombatPhase = 1;
             chapterOneCombatCombo = 0;
+            chapterOneCombatBestCombo = 0;
+            chapterOneCombatSuccesses = 0;
             chapterOneCombatMisses = 0;
+            meleeCounterUntilDsp = 0d;
+            meleeCounterThreatId = -1;
             cinematicInputLockedUntil = 0f;
             chapterCardCallback = null;
             dialogueCallback = null;
             pendingNode = null;
+            if (chapterOneSoulPickup != null) Destroy(chapterOneSoulPickup.gameObject);
+            chapterOneSoulPickup = null;
+            chapterOneSoulCollected = false;
             secondChapterLoading = false;
             secondChapterRouteActive = false;
             completedMemories = 0;
             defeatedEnemies = 0;
             health = 5;
+            collectedNpcMemories.Clear();
+            SyncChapterOneStoryNpcs();
 
             if (musicSource != null) musicSource.Stop();
             if (rhythmPanel != null) rhythmPanel.SetActive(false);
@@ -2593,6 +4661,7 @@ namespace MeixiEcho
             if (chapterPanel != null) chapterPanel.SetActive(false);
             if (endingPanel != null) endingPanel.SetActive(false);
             if (pausePanel != null) pausePanel.SetActive(false);
+            if (defeatPanel != null) defeatPanel.SetActive(false);
             TrackingAttackTelegraph3D.ClearAll();
             MeleeForbiddenRing3D.ClearAll(false);
             EnemyMusicAttackVfx3D.ClearAll();
@@ -2608,29 +4677,104 @@ namespace MeixiEcho
             player?.CompleteFinalStrikeAnimation();
             player?.ResetForNewSession();
             orbitCamera?.ResetGameplayView();
+            displayedHealth = health;
             UpdateHealth();
-            if (soulCountText != null) soulCountText.text = "溪流魂音  0 / 1";
+            if (soulCountText != null) soulCountText.text = "收集魂音：0 / 3";
+            if (archiveProgressText != null) archiveProgressText.text = "村民线索  0 / 3";
             Debug.Log("[MeixiSession] Deterministic gameplay state initialized.");
         }
 
-        private void FinishOpeningSequence()
+        private void CancelFinalStrikeForSessionReset()
+        {
+            if (finalStrikeRoutine != null)
+            {
+                StopCoroutine(finalStrikeRoutine);
+                finalStrikeRoutine = null;
+            }
+            Time.timeScale = finalStrikeRestoreTimeScale > 0f ? finalStrikeRestoreTimeScale : 1f;
+            if (musicSource != null) musicSource.pitch = finalStrikeRestorePitch > 0f ? finalStrikeRestorePitch : 1f;
+            finishingStrike = false;
+            player?.CompleteFinalStrikeAnimation();
+        }
+
+        private void OnDisable()
+        {
+            // Editor stop and scene reload can abort a realtime cinematic yield.
+            // Never leave the next session globally slowed or its audio pitched down.
+            MeixiLocalProgress.ApplyAudioSetting();
+            if (finalStrikeRoutine == null) return;
+            Time.timeScale = 1f;
+            if (musicSource != null) musicSource.pitch = 1f;
+            finalStrikeRoutine = null;
+            finishingStrike = false;
+        }
+
+        private void FinishOpeningSequence(bool immediate = false)
         {
             if (!openingActive) return;
+            if (immediate)
+            {
+                PresentFirstChapterCard();
+                return;
+            }
+            BeginScreenTransition("第 一 章", PresentFirstChapterCard, .42f, .08f, .56f);
+        }
+
+        private void PresentFirstChapterCard()
+        {
             openingActive = false;
             openingPanel.SetActive(false);
             hudPanel.SetActive(true);
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            orbitCamera?.BeginOpeningShot(2.7f);
+            PlayChapterOneExplorationMusic();
             ShowChapterCard(-1, "第 一 章", "没 有 声 音 的 村 庄", "城市的喧闹在山路尽头突然消失", () =>
             {
-                ShowDialogue(new[]
+                ShowExplorationGuide(() => ShowDialogue(new[]
                 {
-                    "林默｜三下乡数字文化调研，第一项任务：记录梅溪村的环境声音。",
-                    "系统｜检测到未知声纹结构。空气中存在大量破碎音符。",
-                    "林默｜这里安静得不正常。连鸟叫和水声都像被什么截断了。",
-                    "老村长｜你手里的机器听见了碎片，可碎片原本属于谁，它不会告诉你。",
-                    "林默｜声音……怎么可能有记忆？",
-                    "老村长｜先去和村里的人说说话。然后沿青石路走到溪边，别只盯着屏幕。"
-                }, () => SetObjective(0));
+                    "林默｜这里应该就是闽清了。先向村民问问樟洋村怎么走。",
+                    "系统｜三下乡实践任务已更新：调查村庄，收集“魂音”。",
+                    "林默｜魂音……就是日记里提到的那个词？"
+                }, () => SetObjective(0)));
             });
+        }
+
+        private void SetOpeningDiaryPage(int index)
+        {
+            openingDiaryPage = Mathf.Clamp(index, 0, diaryBodies.Length - 1);
+            openingPageStartedAt = Time.unscaledTime;
+            // The prologue is player-paced: a page remains on screen until the
+            // player explicitly clicks or presses a presentation key.
+            openingPageUntil = float.PositiveInfinity;
+            openingUntil = openingPageUntil;
+            if (openingPaperGroup != null) openingPaperGroup.alpha = 0f;
+            if (openingDiaryDate != null) openingDiaryDate.text = diaryDates[openingDiaryPage];
+            if (openingDiaryTitle != null) openingDiaryTitle.text = diaryTitles[openingDiaryPage];
+            if (openingDiaryBody != null) openingDiaryBody.text = diaryBodies[openingDiaryPage];
+            if (openingDiaryPageText != null)
+                openingDiaryPageText.text = $"— {openingDiaryPage + 1:00} / {diaryBodies.Length:00} —";
+        }
+
+        private void UpdateOpeningDiary()
+        {
+            float elapsed = Time.unscaledTime - openingPageStartedAt;
+            if (openingPaperGroup != null)
+            {
+                float fadeIn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / .46f));
+                openingPaperGroup.alpha = fadeIn;
+            }
+        }
+
+        private void AdvanceOpeningDiary()
+        {
+            if (!openingActive) return;
+            if (openingDiaryPage + 1 < diaryBodies.Length)
+            {
+                SetOpeningDiaryPage(openingDiaryPage + 1);
+                return;
+            }
+            FinishOpeningSequence();
         }
 
         private void ShowChapterCard(int index, string number, string title, string subtitle, Action callback)
@@ -2656,13 +4800,33 @@ namespace MeixiEcho
         private void FinishChapterCardImmediately()
         {
             chapterCardUntil = 0f;
+            chapterCardTransitionPending = false;
             chapterPanel.SetActive(false);
             Action callback = chapterCardCallback;
             chapterCardCallback = null;
             callback?.Invoke();
         }
 
+        private void FinishChapterCardWithTransition()
+        {
+            if (!chapterPanel.activeSelf || chapterCardTransitionPending || sceneTransitionActive) return;
+            chapterCardTransitionPending = true;
+            Action callback = chapterCardCallback;
+            chapterCardCallback = null;
+            BeginScreenTransition("声 纹 同 步", () =>
+            {
+                chapterPanel.SetActive(false);
+                callback?.Invoke();
+            }, .30f, .04f, .48f);
+        }
+
         private void LoadSecondChapter()
+        {
+            if (secondChapterLoading || secondChapterRouteActive || sceneTransitionActive) return;
+            BeginScreenTransition("余 音 之 路", UnlockSecondChapterRoute, .38f, .08f, .60f);
+        }
+
+        private void UnlockSecondChapterRoute()
         {
             if (secondChapterLoading || secondChapterRouteActive) return;
             MeixiSecondChapterRoute.Ensure(this);
@@ -2697,8 +4861,14 @@ namespace MeixiEcho
 
         private void StartSecondChapterSceneLoad()
         {
-            if (secondChapterLoading) return;
+            if (secondChapterLoading || sceneTransitionActive) return;
             secondChapterLoading = true;
+            BeginScreenTransition("古 戏 台 · 读 取 中", PresentSecondChapterLoading, .52f, .12f, .56f,
+                () => StartCoroutine(LoadSecondChapterRoutine()));
+        }
+
+        private void PresentSecondChapterLoading()
+        {
             secondChapterRouteActive = false;
             Time.timeScale = 1f;
             paused = false;
@@ -2713,7 +4883,6 @@ namespace MeixiEcho
                 loadingPanel.SetActive(true);
                 loadingPanel.transform.SetAsLastSibling();
             }
-            StartCoroutine(LoadSecondChapterRoutine());
         }
 
         private IEnumerator LoadSecondChapterRoutine()
@@ -2744,9 +4913,36 @@ namespace MeixiEcho
         {
             if (chapter >= chapterNames.Length) return;
             chapterHudText.text = $"第一章 · {chapterNames[0].Replace(" ", "")}";
-            objectiveText.text = chapterOneCombatActive
-                ? "脱离红色追踪区，击破溪灵的三段声纹护甲"
-                : "沿青石路前往溪畔，按 E 聆听第一段魂音";
+            if (secondChapterRouteActive)
+            {
+                storyProgressText.text = "主线 04 / 04  ·  余音之路";
+                objectiveText.text = "沿北侧青石路穿过村口，前往古戏台";
+            }
+            else if (chapterOneCombatActive)
+            {
+                storyProgressText.text = "主线 03 / 04  ·  溪灵对拍";
+                objectiveText.text = "看清红色追踪区，按节拍闪避并击破三段声纹";
+            }
+            else if (completedMemories > 0)
+            {
+                storyProgressText.text = "主线 04 / 04  ·  溪声归位";
+                objectiveText.text = "返回村口，沿新出现的道路前往下一段记忆";
+            }
+            else if (collectedNpcMemories.Count == 0)
+            {
+                storyProgressText.text = "主线 01 / 04  ·  询问道路";
+                objectiveText.text = "在村口找到老村长，询问樟洋村怎么走";
+            }
+            else if (collectedNpcMemories.Count < 3)
+            {
+                storyProgressText.text = "主线 02 / 04  ·  村中异样";
+                objectiveText.text = $"继续询问小孩和石婶，收集村民线索（{collectedNpcMemories.Count} / 3）";
+            }
+            else
+            {
+                storyProgressText.text = "主线 03 / 04  ·  收集魂音";
+                objectiveText.text = "沿青石路前往溪边，按 E 调查发光的魂音";
+            }
         }
 
         private string ToChineseNumber(int value) => value switch { 1 => "一", 2 => "二", 3 => "三", 4 => "四", _ => "五" };
@@ -2814,12 +5010,32 @@ namespace MeixiEcho
         public void BeginNpcDialogue(VillageNpc3D npc, string[] lines)
         {
             if (npc == null || lines == null || lines.Length == 0) return;
+            if (!IsAutomatedPresentationRun()) MeixiLocalProgress.RecordNpcDialogue(npc.DisplayName);
             npc.FacePlayerImmediately();
-            ShowDialogue(lines, () => ShowToast("已记录 " + npc.DisplayName + " 的村落记忆", new Color(0.44f, 0.92f, 0.84f)));
+            ShowDialogue(lines, () =>
+            {
+                bool firstRecord = collectedNpcMemories.Add(npc.DisplayName);
+                if (firstRecord)
+                {
+                    if (archiveProgressText != null) archiveProgressText.text = $"村民线索  {collectedNpcMemories.Count} / 3";
+                    ShowToast("◆ 村民线索已记录 · " + npc.DisplayName + " ◆", new Color(1f, .76f, .36f));
+                    SetObjective(0);
+                }
+                else
+                {
+                    ShowToast("重新聆听 · " + npc.DisplayName, new Color(.48f, .86f, .92f));
+                }
+            });
         }
 
         public void BeginMemory(int index, SoulNode3D node)
         {
+            if (collectedNpcMemories.Count < 3)
+            {
+                ShowToast($"先完成村中调查，寻找魂音线索（{collectedNpcMemories.Count} / 3）", new Color(1f, .72f, .30f));
+                SetObjective(0);
+                return;
+            }
             if (index != 0 || completedMemories > 0 || chapterOneCombatActive)
             {
                 ShowToast("溪流魂音已经连接", new Color(0.42f, 0.90f, 1f));
@@ -2850,53 +5066,56 @@ namespace MeixiEcho
             fullDialogueLine = split > 0 ? line[(split + 1)..] : line;
             if (dialogueCounter != null) dialogueCounter.text = $"{dialogueLine + 1:00} / {Mathf.Max(1, activeDialogue?.Length ?? 1):00}";
             UpdateDialogueSpeakerStyle(speaker);
-            // Keep story text immediately legible across keyboard, controller and capture
-            // environments. The old typewriter path could leave the body line blank when
-            // no keyboard device was registered during startup.
-            typedCharacters = fullDialogueLine.Length;
-            dialogueText.text = fullDialogueLine;
+            // UpdateTypewriter runs independently of keyboard availability, so story
+            // text can reveal cinematically without recreating the old blank-dialogue
+            // startup bug in controller-only and capture environments.
+            typedCharacters = 0f;
+            dialogueText.text = string.Empty;
         }
 
         private void UpdateDialogueSpeakerStyle(string speaker)
         {
             string role = "梅溪魂音档案";
-            string glyph = "音";
             Color accent = new Color(0.48f, 0.86f, 0.92f);
+            bool villageNpc = false;
             if (speaker.Contains("林默"))
             {
                 role = "城市调研员 · 电子信息专业";
-                glyph = "林";
                 accent = new Color(0.38f, 0.82f, 1f);
             }
             else if (speaker.Contains("老村长"))
             {
-                role = "梅溪村守泉人";
-                glyph = "村";
+                role = "村口老人 · 记忆模糊";
                 accent = new Color(1f, 0.72f, 0.32f);
+                villageNpc = true;
             }
-            else if (speaker.Contains("阿禾"))
+            else if (speaker.Contains("小孩"))
             {
-                role = "村中少年 · 采样爱好者";
-                glyph = "禾";
+                role = "溪边玩耍的孩子";
                 accent = new Color(0.52f, 0.94f, 0.62f);
+                villageNpc = true;
             }
-            else if (speaker.Contains("桂婶"))
+            else if (speaker.Contains("石婶"))
             {
-                role = "橄榄园守护人";
-                glyph = "桂";
+                role = "沉默的村民";
                 accent = new Color(0.86f, 0.68f, 1f);
+                villageNpc = true;
             }
             else if (speaker.Contains("系统"))
             {
                 role = "AI 声纹采集系统";
-                glyph = "声";
                 accent = new Color(0.30f, 0.94f, 1f);
             }
             if (dialogueRole != null) dialogueRole.text = role;
-            if (dialoguePortraitGlyph != null)
+            if (dialoguePortraitImage != null)
             {
-                dialoguePortraitGlyph.text = glyph;
-                dialoguePortraitGlyph.color = accent;
+                Sprite portraitSprite = speaker.Contains("林默") ? playerDialoguePortraitSprite :
+                    speaker.Contains("小孩") ? childDialoguePortraitSprite :
+                    speaker.Contains("石婶") ? auntDialoguePortraitSprite :
+                    villageNpc ? npcDialoguePortraitSprite : beatSigilSprite;
+                dialoguePortraitImage.sprite = portraitSprite;
+                dialoguePortraitImage.color = portraitSprite == beatSigilSprite ? accent : Color.white;
+                dialoguePortraitImage.gameObject.SetActive(portraitSprite != null);
             }
             if (dialoguePortraitPlate != null) dialoguePortraitPlate.color = Color.Lerp(new Color(0.015f, 0.06f, 0.08f, 0.98f), accent, 0.20f);
             dialogueSpeaker.color = accent;
@@ -2933,6 +5152,18 @@ namespace MeixiEcho
 
         private void StartChapterOneCombat()
         {
+            if (chapterOneCombatActive || complete || sceneTransitionActive) return;
+            BeginScreenTransition("溪 流 声 纹 · 战 斗 同 步", ActivateChapterOneCombat, .34f, .08f, .54f);
+        }
+
+        private void ActivateChapterOneCombat()
+        {
+            if (chapterOneCombatActive || complete) return;
+            ShowBattleGuide(BeginChapterOneCombatCore);
+        }
+
+        private void BeginChapterOneCombatCore()
+        {
             if (chapterOneCombatActive || complete) return;
             Debug.Log("[MeixiCombat] Chapter one start requested.");
             if (creekSpirit == null)
@@ -2967,27 +5198,42 @@ namespace MeixiEcho
             resolvedThreatId = -1;
             playerDamageImmuneUntilDsp = 0d;
             expectedCombatAction = CombatBeatAction.None;
+            currentThreatResolveDsp = 0d;
+            combatPhaseRestUntilDsp = 0d;
+            expectedCombatStepCount = 0;
+            expectedCombatStepIndex = 0;
+            bufferedCombatKey = CombatInputKey.None;
+            bufferedCombatKeyDsp = 0d;
+            lastCombatSequenceInputDsp = 0d;
+            ResetDualHandCombatCue();
             chapterOneCombatCombo = 0;
+            chapterOneCombatBestCombo = 0;
+            chapterOneCombatSuccesses = 0;
             chapterOneCombatMisses = 0;
             chapterOneCombatPhase = 1;
+            meleeCounterUntilDsp = 0d;
+            meleeCounterThreatId = -1;
             if (pendingNode != null) pendingNode.gameObject.SetActive(false);
             if (chapterPanel != null) chapterPanel.SetActive(false);
             if (dialoguePanel != null) dialoguePanel.SetActive(false);
             SetInteractionCard(null);
             SetObjective(0);
             rhythmPanel.SetActive(true);
-            rhythmTitle.text = "失 调 溪 灵   三段声纹 36 / 36";
+            rhythmTitle.text = "BOSS  ·  失 调 溪 灵";
+            if (combatPhaseLabel != null) combatPhaseLabel.text = "第一阶段 · 听潮";
+            SetCombatBarVisualAmount(combatEnemyHealthFill, 1f);
+            SetCombatBarVisualAmount(combatEnemyHealthChipFill, 1f);
             rhythmJudge.text = "红色追踪区收束前按 SPACE 瞬身离开";
             rhythmScore.text = "J 近战突进（需进入范围） · K 远程音符波 · SPACE 瞬身闪避";
             if (combatActionKey != null) combatActionKey.text = "·";
             if (combatActionName != null) combatActionName.text = "聆 听 敌 人";
             chapterOneBeatStart = AudioSettings.dspTime + 0.12d;
             chapterOneBeatPulse = 0f;
-            chapterOneCombatBpm = chapterOneMusic != null && chapterOneMusic != rhythmSong ? 76f : bpms[0];
+            chapterOneCombatBpm = chapterOneBattleTimeline != null ? chapterOneBattleTimeline.Bpm : bpms[0];
 
             musicSource.Stop();
             musicSource.clip = chapterOneMusic ?? rhythmSong;
-            musicSource.pitch = musicSource.clip == rhythmSong ? chapterOneCombatBpm / 105f : 1f;
+            musicSource.pitch = 1f;
             musicSource.time = 0f;
             musicSource.volume = 0.30f;
             musicSource.PlayScheduled(chapterOneBeatStart);
@@ -3000,14 +5246,30 @@ namespace MeixiEcho
         private void UpdateChapterOneCombatHud()
         {
             if (rhythmFlash == null || creekSpirit == null) return;
-            float beat = 60f / chapterOneCombatBpm;
-            double elapsed = Math.Max(0d, AudioSettings.dspTime - chapterOneBeatStart);
-            float phase = (float)(elapsed % beat) / beat;
-            float distanceToBeat = Mathf.Min(phase, 1f - phase);
-            float musicPulse = Mathf.Clamp01(1f - distanceToBeat / 0.24f);
+            UpdateDualHandCombatHud();
+            float musicPulse = chapterOneBattleTimeline != null
+                ? chapterOneBattleTimeline.GetPulse(AudioSettings.dspTime, chapterOneBeatStart, 0.20f)
+                : 0f;
             double now = AudioSettings.dspTime;
+            if (meleeCounterThreatId >= 0 && now > meleeCounterUntilDsp)
+            {
+                meleeCounterThreatId = -1;
+                meleeCounterUntilDsp = 0d;
+                if (!combatBeatPending)
+                {
+                    if (combatActionKey != null) combatActionKey.text = "·";
+                    if (combatActionName != null)
+                    {
+                        combatActionName.text = "聆 听 下 一 拍";
+                        combatActionName.color = new Color(0.52f, 0.82f, 0.92f);
+                    }
+                }
+            }
+            double displayedBeat = expectedCombatStepCount > 0 && expectedCombatStepIndex < expectedCombatStepCount
+                ? expectedCombatStepDsps[expectedCombatStepIndex]
+                : expectedCombatBeatDsp;
             float responsePulse = combatBeatPending
-                ? Mathf.Clamp01(1f - Mathf.Abs((float)(expectedCombatBeatDsp - now)) / 0.72f)
+                ? Mathf.Clamp01(1f - Mathf.Abs((float)(displayedBeat - now)) / 0.72f)
                 : 0f;
             chapterOneBeatPulse = Mathf.Max(musicPulse * 0.34f, responsePulse);
             float scale = 0.88f + chapterOneBeatPulse * 0.22f;
@@ -3017,19 +5279,285 @@ namespace MeixiEcho
             Color actionColor = CombatActionColor(expectedCombatAction);
             color = Color.Lerp(new Color(0.18f, 0.72f, 0.90f, color.a), new Color(actionColor.r, actionColor.g, actionColor.b, color.a), chapterOneBeatPulse);
             rhythmFlash.color = color;
-            rhythmTitle.text = $"失 调 溪 灵   第 {chapterOneCombatPhase} 段声纹   {creekSpirit.Health} / {creekSpirit.HealthMaximum}";
-            rhythmScore.text = $"SPACE 瞬身  ·  J 近战突进  ·  K 远程音符波     闪避 {chapterOneCombatCombo}   受击 {chapterOneCombatMisses}";
+            rhythmTitle.text = "失 调 溪 灵";
+            if (combatPhaseLabel != null)
+                combatPhaseLabel.text = chapterOneCombatPhase switch
+                {
+                    1 => "第一阶段 · 听潮",
+                    2 => "第二阶段 · 逆流",
+                    _ => "第三阶段 · 回声暴雨"
+                };
+            if (combatEnemyHealthFill != null)
+            {
+                // Keep one continuous boss-health timeline across all three phases.
+                // The previous phase-local value jumped back to 100% on every phase
+                // transition, making successful rhythm responses appear ineffective.
+                float phaseHealth = Mathf.Clamp01(creekSpirit.Health /
+                    (float)Mathf.Max(1, creekSpirit.HealthMaximum));
+                combatEnemyHealthFill.fillAmount = Mathf.MoveTowards(combatEnemyHealthFill.fillAmount,
+                    phaseHealth, Time.unscaledDeltaTime * 2.5f);
+                SetCombatBarVisualAmount(combatEnemyHealthFill, combatEnemyHealthFill.fillAmount);
+                if (combatEnemyHealthChipFill != null)
+                {
+                    if (combatEnemyHealthChipFill.fillAmount < combatEnemyHealthFill.fillAmount)
+                        combatEnemyHealthChipFill.fillAmount = combatEnemyHealthFill.fillAmount;
+                    else
+                        combatEnemyHealthChipFill.fillAmount = Mathf.MoveTowards(combatEnemyHealthChipFill.fillAmount,
+                            phaseHealth, Time.unscaledDeltaTime * .34f);
+                    SetCombatBarVisualAmount(combatEnemyHealthChipFill, combatEnemyHealthChipFill.fillAmount);
+                }
+                combatEnemyHealthFill.color = chapterOneCombatPhase switch
+                {
+                    1 => new Color(0.12f, 0.88f, 1f, 0.98f),
+                    2 => new Color(1f, 0.62f, 0.14f, 0.98f),
+                    _ => new Color(1f, 0.18f, 0.30f, 0.98f)
+                };
+            }
+            for (int i = 0; i < combatPhaseSegments.Length; i++)
+            {
+                if (combatPhaseSegments[i] == null) continue;
+                combatPhaseSegments[i].color = i + 1 < chapterOneCombatPhase
+                    ? new Color(0.36f, 0.96f, 0.72f, 0.92f)
+                    : i + 1 == chapterOneCombatPhase
+                        ? chapterOneCombatPhase == 1
+                            ? new Color(0.16f, 0.92f, 1f, 1f)
+                            : chapterOneCombatPhase == 2
+                                ? new Color(1f, 0.62f, 0.14f, 1f)
+                                : new Color(1f, 0.16f, 0.26f, 1f)
+                        : new Color(0.18f, 0.28f, 0.32f, 0.82f);
+            }
+            rhythmScore.text = chapterOneCombatPhase == 1
+                ? "短按踩拍  ·  J 近战  ·  K 远程  ·  SPACE 闪避冲刺"
+                : chapterOneCombatPhase == 2
+                    ? "短按 / 同时按 / 顺序连击  ·  跟随中央主旋律"
+                    : "左右声部同时推进  ·  小图标短按  ·  大图标与黄色光圈需要持续按住";
+            if (CombatPhaseResting)
+            {
+                if (combatActionKey != null) combatActionKey.text = "—";
+                if (combatActionName != null)
+                {
+                    combatActionName.text = "节 拍 休 止 · 等 待 新 指 令";
+                    combatActionName.color = new Color(.62f, .90f, .94f);
+                }
+                rhythmJudge.text = "阶段切换期间无伤 · 新按键出现后再回应";
+                rhythmJudge.color = new Color(.68f, .90f, .94f);
+            }
+        }
+
+        private void UpdateDualHandCombatHud()
+        {
+            bool dual = chapterOneCombatPhase >= 3;
+            if (lastDualHandHudPhase != chapterOneCombatPhase)
+            {
+                lastDualHandHudPhase = chapterOneCombatPhase;
+                // The old upper rectangular plates competed with the actual beat cues.
+                // Keep the labels floating and let the sigils carry the visual hierarchy.
+                if (leftHandCuePlate != null) leftHandCuePlate.SetActive(false);
+                if (rightHandCuePlate != null) rightHandCuePlate.SetActive(false);
+                if (leftHandRhythmFlash != null) leftHandRhythmFlash.gameObject.SetActive(dual);
+                if (leftHandActionKey != null) leftHandActionKey.gameObject.SetActive(dual);
+                if (leftHandActionName != null) leftHandActionName.gameObject.SetActive(dual);
+                if (rhythmFlash != null)
+                    SetRect(rhythmFlash.rectTransform, dual ? new Vector2(.595f, .39f) : new Vector2(.415f, .34f),
+                        dual ? new Vector2(.755f, .65f) : new Vector2(.585f, .64f), Vector2.zero, Vector2.zero);
+                if (combatActionKey != null)
+                    SetRect(combatActionKey.rectTransform, dual ? new Vector2(.625f, .435f) : new Vector2(.44f, .43f),
+                        dual ? new Vector2(.725f, .555f) : new Vector2(.56f, .56f), Vector2.zero, Vector2.zero);
+                if (combatActionName != null)
+                    SetRect(combatActionName.rectTransform, dual ? new Vector2(.585f, .65f) : new Vector2(.38f, .64f),
+                        dual ? new Vector2(.765f, .70f) : new Vector2(.62f, .70f), Vector2.zero, Vector2.zero);
+            }
+            if (!dual) return;
+
+            ApplyLeftHandCueLayout(leftHandHoldRequired);
+
+            double now = AudioSettings.dspTime;
+            float cuePulse = leftHandCueActive
+                ? Mathf.Clamp01(1f - Mathf.Abs((float)(now - expectedLeftHandBeatDsp)) / .70f)
+                : 0f;
+            bool holdVisible = leftHandCueActive && leftHandHoldRequired && !leftHandSucceeded;
+            float holdPulse = .5f + .5f * Mathf.Sin(Time.unscaledTime * 8.5f);
+            if (leftHandHoldHalo != null)
+            {
+                leftHandHoldHalo.gameObject.SetActive(holdVisible);
+                leftHandHoldHalo.rectTransform.localScale = Vector3.one * (1.02f + holdPulse * .10f + cuePulse * .08f);
+                leftHandHoldHalo.color = new Color(1f, .67f, .06f, .48f + holdPulse * .38f);
+            }
+            if (leftHandHoldProgressFill != null)
+            {
+                leftHandHoldProgressFill.gameObject.SetActive(holdVisible);
+                leftHandHoldProgressFill.fillAmount = Mathf.Max(.035f, leftHandHoldProgress);
+                leftHandHoldProgressFill.color = Color.Lerp(new Color(1f, .48f, .04f, .58f),
+                    new Color(1f, .96f, .42f, .98f), leftHandHoldProgress);
+                leftHandHoldProgressFill.rectTransform.localScale = Vector3.one * (1.03f + holdPulse * .055f);
+            }
+            if (leftHandRhythmFlash != null)
+            {
+                leftHandRhythmFlash.rectTransform.localScale = Vector3.one *
+                    (leftHandHoldRequired ? .98f + cuePulse * .22f : .92f + cuePulse * .20f);
+                Color cueColor = leftHandHoldRequired ? new Color(1f, .68f, .08f) : Color.white;
+                cueColor.a = leftHandSucceeded ? .34f : .52f + cuePulse * .46f;
+                leftHandRhythmFlash.color = cueColor;
+            }
+            if (leftHandActionKey != null)
+            {
+                leftHandActionKey.fontSize = leftHandHoldRequired ? 82 : 58;
+                leftHandActionKey.color = leftHandHoldRequired
+                    ? Color.Lerp(new Color(1f, .72f, .16f), Color.white, holdPulse)
+                    : Color.white;
+            }
+            if (leftHandActionName != null)
+            {
+                leftHandActionName.fontSize = leftHandHoldRequired ? 25 : 23;
+                if (leftHandCueActive && !leftHandSucceeded && !leftHandHolding)
+                {
+                    leftHandActionName.text = leftHandHoldRequired
+                        ? $"长 按 {CombatInputKeyText(expectedLeftHandKey)}  ·  保 持 {expectedLeftHandHoldDuration:0.00}s"
+                        : $"短 按 {CombatInputKeyText(expectedLeftHandKey)}  ·  立 即 松 开";
+                }
+            }
+            int illuminated = leftHandHoldRequired
+                ? Mathf.RoundToInt(leftHandHoldProgress * leftHandHoldRingSegments.Length)
+                : 0;
+            for (int i = 0; i < leftHandHoldRingSegments.Length; i++)
+            {
+                Image segment = leftHandHoldRingSegments[i];
+                if (segment == null) continue;
+                segment.gameObject.SetActive(leftHandCueActive && leftHandHoldRequired && !leftHandSucceeded);
+                segment.color = i < illuminated
+                    ? Color.Lerp(new Color(1f, .52f, .04f, .98f), new Color(1f, .98f, .50f, 1f), i / (float)leftHandHoldRingSegments.Length)
+                    : new Color(.40f, .27f, .06f, .78f);
+                segment.rectTransform.localScale = Vector3.one * (i == illuminated ? 1.28f : 1f);
+            }
+        }
+
+        private void ApplyLeftHandCueLayout(bool hold)
+        {
+            // Short presses mirror the right-hand cue exactly. A sustained note
+            // expands only the left icon, leaving the yellow timing ring enough
+            // room to read clearly at a glance.
+            if (leftHandRhythmFlash != null)
+                SetRect(leftHandRhythmFlash.rectTransform,
+                    hold ? new Vector2(.205f, .295f) : new Vector2(.245f, .39f),
+                    hold ? new Vector2(.445f, .705f) : new Vector2(.405f, .65f), Vector2.zero, Vector2.zero);
+            if (leftHandActionKey != null)
+                SetRect(leftHandActionKey.rectTransform,
+                    hold ? new Vector2(.255f, .415f) : new Vector2(.275f, .435f),
+                    hold ? new Vector2(.395f, .585f) : new Vector2(.375f, .555f), Vector2.zero, Vector2.zero);
+            if (leftHandActionName != null)
+                SetRect(leftHandActionName.rectTransform,
+                    hold ? new Vector2(.185f, .705f) : new Vector2(.235f, .65f),
+                    hold ? new Vector2(.465f, .775f) : new Vector2(.415f, .70f), Vector2.zero, Vector2.zero);
         }
 
         public bool IsCombatOnBeat(float window = 0.14f)
         {
-            return chapterOneCombatActive && combatBeatPending &&
-                   Math.Abs(AudioSettings.dspTime - expectedCombatBeatDsp) <= window;
+            return chapterOneCombatActive && !CombatPhaseResting && combatBeatPending &&
+                   Math.Abs(AudioSettings.dspTime -
+                       (expectedCombatStepCount > 0 && expectedCombatStepIndex < expectedCombatStepCount
+                           ? expectedCombatStepDsps[expectedCombatStepIndex] : expectedCombatBeatDsp)) <= window;
         }
 
         public void PrepareCombatBeat(int attackType, double beatTime)
         {
-            if (!chapterOneCombatActive || finishingStrike) return;
+            PrepareCombatBeat(attackType, beatTime, threatSequence);
+        }
+
+        public void PrepareCombatBeat(int attackType, double beatTime, int patternIndex)
+        {
+            if (!chapterOneCombatActive || finishingStrike || CombatPhaseResting) return;
+            meleeCounterThreatId = -1;
+            meleeCounterUntilDsp = 0d;
+            ResetDualHandCombatCue();
+            expectedCombatAction = attackType == 3
+                ? CombatBeatAction.Dodge
+                : SelectExpectedCombatAction(chapterOneCombatPhase, patternIndex);
+            expectedCombatStepCount = BuildCombatPattern(expectedCombatAction, beatTime);
+            expectedCombatStepIndex = 0;
+            expectedCombatBeatDsp = beatTime;
+            currentThreatResolveDsp = expectedCombatStepCount > 1 && !IsChordAction(expectedCombatAction)
+                ? beatTime + CurrentCombatSequenceMaxGap * (expectedCombatStepCount - 1) + 0.05d
+                : beatTime;
+            if (chapterOneCombatPhase >= 3)
+            {
+                ConfigureLeftHandCombatCue(patternIndex, beatTime);
+                double leftResolve = expectedLeftHandBeatDsp + (leftHandHoldRequired ? expectedLeftHandHoldDuration + .08d : .04d);
+                currentThreatResolveDsp = Math.Max(currentThreatResolveDsp, leftResolve);
+            }
+            combatBeatPending = true;
+            combatBeatSucceeded = false;
+            threatDamageResolved = false;
+            currentThreatType = attackType;
+            activeThreatId = ++threatSequence;
+            autoActionIssuedForBeat = false;
+            bufferedCombatKey = CombatInputKey.None;
+            bufferedCombatKeyDsp = 0d;
+            lastCombatSequenceInputDsp = 0d;
+            if (combatActionKey != null) combatActionKey.text = CombatActionKey(expectedCombatAction);
+            if (combatActionName != null)
+            {
+                combatActionName.text = CombatActionName(expectedCombatAction);
+                combatActionName.color = CombatActionColor(expectedCombatAction);
+            }
+            float warningLifetime = Mathf.Max(0.50f, (float)(currentThreatResolveDsp - AudioSettings.dspTime) + 0.30f);
+            MeleeForbiddenRing3D.Show(creekSpirit != null ? creekSpirit.transform : null, expectedCombatAction, warningLifetime);
+            ReportEnemyTelegraph(attackType);
+            Debug.Log($"[MeixiBeat] threat={activeThreatId} phase={chapterOneCombatPhase} action={expectedCombatAction} " +
+                      $"first={expectedCombatBeatDsp:F3} resolve={currentThreatResolveDsp:F3} left={expectedLeftHandKey} " +
+                      $"hold={leftHandHoldRequired} now={AudioSettings.dspTime:F3}");
+        }
+
+        private void ResetDualHandCombatCue()
+        {
+            leftHandCueActive = false;
+            leftHandHoldRequired = false;
+            leftHandHolding = false;
+            leftHandSucceeded = false;
+            rightHandSucceeded = false;
+            rightHandDodgeResponse = false;
+            expectedLeftHandKey = CombatInputKey.None;
+            expectedLeftHandBeatDsp = 0d;
+            leftHandHoldStartedDsp = 0d;
+            expectedLeftHandHoldDuration = 0f;
+            leftHandHoldProgress = 0f;
+            dualHandHoldPreviewActive = false;
+            if (leftHandActionKey != null) leftHandActionKey.text = "—";
+            if (leftHandActionName != null) leftHandActionName.text = "等 待 左 手 声 部";
+        }
+
+        private void ConfigureLeftHandCombatCue(int patternIndex, double rightBeatDsp)
+        {
+            int variation = Mathf.Abs(patternIndex) % 4;
+            leftHandCueActive = true;
+            expectedLeftHandKey = variation is 0 or 2 ? CombatInputKey.Q : CombatInputKey.E;
+            leftHandHoldRequired = variation is 1 or 2;
+            expectedLeftHandBeatDsp = rightBeatDsp + (variation switch
+            {
+                0 => -.14d,
+                1 => -.08d,
+                2 => .10d,
+                _ => .15d
+            });
+            expectedLeftHandHoldDuration = variation == 1 ? .62f : variation == 2 ? .78f : 0f;
+            leftHandSucceeded = false;
+            leftHandHolding = false;
+            leftHandHoldProgress = 0f;
+            if (leftHandActionKey != null) leftHandActionKey.text = CombatInputKeyText(expectedLeftHandKey);
+            if (leftHandActionName != null)
+            {
+                leftHandActionName.text = leftHandHoldRequired
+                    ? $"长 按 {CombatInputKeyText(expectedLeftHandKey)}  ·  保 持 {expectedLeftHandHoldDuration:0.00}s"
+                    : $"短 按 {CombatInputKeyText(expectedLeftHandKey)}  ·  立 即 松 开";
+                leftHandActionName.color = leftHandHoldRequired
+                    ? new Color(.52f, .90f, 1f) : new Color(.48f, 1f, .72f);
+            }
+        }
+
+        private void PrepareCombatBeatLegacy(int attackType, double beatTime)
+        {
+            if (!chapterOneCombatActive || finishingStrike || CombatPhaseResting) return;
+            meleeCounterThreatId = -1;
+            meleeCounterUntilDsp = 0d;
             // 高抛坠音与贴地冲击波要求空间闪避；持续追踪的和弦只能用 K 音符波破谱。
             expectedCombatAction = attackType == 2 ? CombatBeatAction.AttackTwo : CombatBeatAction.Dodge;
             expectedCombatBeatDsp = beatTime;
@@ -3057,6 +5585,412 @@ namespace MeixiEcho
             ReportEnemyTelegraph(attackType);
             Debug.Log($"[MeixiSpatial] Threat id={activeThreatId} type={attackType} impact={expectedCombatBeatDsp:F3} now={AudioSettings.dspTime:F3}");
         }
+
+        public double GetNextAnalyzedCombatBeat(double afterDsp, int phase)
+        {
+            int spacing = phase <= 1 ? 2 : phase == 2 ? 1 : 1;
+            bool strong = phase <= 2;
+            ChapterOneBattleTimeline timeline = phase >= 3 && phaseThreeBattleTimeline != null && phaseThreeBattleTimeline.IsValid
+                ? phaseThreeBattleTimeline : chapterOneBattleTimeline;
+            return timeline != null && timeline.IsValid
+                ? timeline.GetNextBeatDsp(afterDsp, chapterOneBeatStart, spacing, strong)
+                : afterDsp + (phase <= 1 ? 1.25d : phase == 2 ? 0.82d : 0.64d);
+        }
+
+        private CombatBeatAction SelectExpectedCombatAction(int phase, int patternIndex)
+        {
+            CombatBeatAction[] pattern = phase switch
+            {
+                1 => new[] { CombatBeatAction.AttackOne, CombatBeatAction.AttackTwo, CombatBeatAction.Dodge,
+                    CombatBeatAction.AttackOne, CombatBeatAction.Dodge, CombatBeatAction.AttackTwo },
+                2 => new[] { CombatBeatAction.JKWave, CombatBeatAction.TripleJ, CombatBeatAction.JDodgeStrike,
+                    CombatBeatAction.JKRiff, CombatBeatAction.KDodgeTripleArc, CombatBeatAction.KJKRiff,
+                    CombatBeatAction.AttackTwo, CombatBeatAction.Dodge },
+                _ => new[] { CombatBeatAction.TripleJ, CombatBeatAction.JKRiff, CombatBeatAction.KJKRiff,
+                    CombatBeatAction.KDodgeTripleArc, CombatBeatAction.JDodgeStrike, CombatBeatAction.JKWave,
+                    CombatBeatAction.TripleJ, CombatBeatAction.AttackTwo }
+            };
+            return pattern[Mathf.Abs(patternIndex) % pattern.Length];
+        }
+
+        private int BuildCombatPattern(CombatBeatAction action, double firstBeat)
+        {
+            CombatInputKey first = CombatInputKey.None;
+            switch (action)
+            {
+                case CombatBeatAction.AttackOne: first = CombatInputKey.J; break;
+                case CombatBeatAction.AttackTwo: first = CombatInputKey.K; break;
+                case CombatBeatAction.Dodge: first = CombatInputKey.Space; break;
+                case CombatBeatAction.JKWave: expectedCombatSteps[0] = CombatInputKey.J; expectedCombatSteps[1] = CombatInputKey.K; break;
+                case CombatBeatAction.JDodgeStrike: expectedCombatSteps[0] = CombatInputKey.J; expectedCombatSteps[1] = CombatInputKey.Space; break;
+                case CombatBeatAction.KDodgeTripleArc: expectedCombatSteps[0] = CombatInputKey.K; expectedCombatSteps[1] = CombatInputKey.Space; break;
+                case CombatBeatAction.TripleJ: expectedCombatSteps[0] = CombatInputKey.J; expectedCombatSteps[1] = CombatInputKey.J; expectedCombatSteps[2] = CombatInputKey.J; break;
+                case CombatBeatAction.JKRiff: expectedCombatSteps[0] = CombatInputKey.J; expectedCombatSteps[1] = CombatInputKey.K; expectedCombatSteps[2] = CombatInputKey.J; break;
+                case CombatBeatAction.KJKRiff: expectedCombatSteps[0] = CombatInputKey.K; expectedCombatSteps[1] = CombatInputKey.J; expectedCombatSteps[2] = CombatInputKey.K; break;
+            }
+            int count = action == CombatBeatAction.JKWave || action == CombatBeatAction.JDodgeStrike ||
+                        action == CombatBeatAction.KDodgeTripleArc ? 2 :
+                        action == CombatBeatAction.TripleJ || action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff ? 3 : 1;
+            if (count == 1) expectedCombatSteps[0] = first;
+            expectedCombatStepDsps[0] = firstBeat;
+            for (int i = 1; i < count; i++)
+                expectedCombatStepDsps[i] = IsChordAction(action)
+                    ? firstBeat
+                    : firstBeat + i * CombatSequenceStepSpacing;
+            return count;
+        }
+
+        public bool ProcessChapterOneCombatInput(MeixiThirdPersonPlayer actor, bool jPressed, bool kPressed, bool spacePressed,
+            bool jHeld, bool kHeld, bool spaceHeld, bool qPressed, bool ePressed, bool qHeld, bool eHeld,
+            bool qReleased, bool eReleased)
+        {
+            if (!chapterOneCombatActive || finishingStrike || actor == null) return false;
+            if (CombatPhaseResting) return true;
+            double now = AudioSettings.dspTime;
+            // Q/E and J/K/SPACE can arrive on the same hardware frame. Some
+            // keyboards briefly report the held state of the sustained key as
+            // false while another key is pressed; that transient must not be
+            // treated as an intentional release or it turns a valid right-hand
+            // response into an avoidable damage event.
+            bool rightHandInputPressed = jPressed || kPressed || spacePressed;
+            bool leftInputConsumed = chapterOneCombatPhase >= 3 && leftHandCueActive &&
+                                     ProcessLeftHandCombatInput(now, qPressed, ePressed, qHeld, eHeld, qReleased, eReleased,
+                                         rightHandInputPressed);
+            if (!combatBeatPending) return leftInputConsumed;
+            if (bufferedCombatKey != CombatInputKey.None && now - bufferedCombatKeyDsp > CurrentCombatChordWindow)
+            {
+                bufferedCombatKey = CombatInputKey.None;
+                rhythmJudge.text = "组合键未同时按住 · 光圈收束前仍可重试";
+                rhythmJudge.color = new Color(1f, .72f, .28f);
+            }
+            if (combatBeatPending && !IsChordAction(expectedCombatAction) && expectedCombatStepIndex > 0 &&
+                now - lastCombatSequenceInputDsp > CurrentCombatSequenceMaxGap)
+            {
+                rhythmJudge.text = "连击间隔过长 · 等待敌方本拍结算";
+                rhythmJudge.color = new Color(1f, .62f, .26f);
+            }
+            CombatInputKey key = jPressed ? CombatInputKey.J : kPressed ? CombatInputKey.K : spacePressed ? CombatInputKey.Space : CombatInputKey.None;
+            int pressedCount = (jPressed ? 1 : 0) + (kPressed ? 1 : 0) + (spacePressed ? 1 : 0);
+            if (!combatBeatPending) return true;
+            if (rightHandSucceeded)
+            {
+                if (pressedCount > 0)
+                {
+                    rhythmJudge.text = "右手声部已完成 · 继续维持左手节拍";
+                    rhythmJudge.color = new Color(.42f, .88f, 1f);
+                }
+                return leftInputConsumed || pressedCount > 0;
+            }
+            if (pressedCount > 0)
+            {
+                double targetDsp = expectedCombatStepCount > 0 && expectedCombatStepIndex < expectedCombatStepCount
+                    ? expectedCombatStepDsps[expectedCombatStepIndex] : expectedCombatBeatDsp;
+                double grace = IsChordAction(expectedCombatAction)
+                    ? CurrentCombatInputWindow + CurrentCombatChordWindow : CurrentCombatInputWindow;
+                if (now < targetDsp - grace)
+                {
+                    if (IsChordAction(expectedCombatAction) && IsChordMember(expectedCombatAction, key))
+                    {
+                        bufferedCombatKey = key;
+                        bufferedCombatKeyDsp = now;
+                    }
+                    rhythmJudge.text = "输入稍早 · 保留本拍，请在魂音收束时再按";
+                    rhythmJudge.color = new Color(1f, .76f, .30f);
+                    return true;
+                }
+                if (now > targetDsp + grace)
+                {
+                    rhythmJudge.text = "本拍输入窗口已过 · 等待敌方动作结算";
+                    rhythmJudge.color = new Color(.68f, .78f, .84f);
+                    return true;
+                }
+            }
+            if (IsChordAction(expectedCombatAction))
+            {
+                bool chordHeld = ExpectedChordIsHeld(expectedCombatAction, jHeld, kHeld, spaceHeld);
+                // Both keys may have been pressed on the previous rendered frame
+                // and still be held on the beat frame. A buffered chord edge is
+                // enough evidence to resolve it; requiring a fresh wasPressed
+                // edge here was the source of intermittent phase-three misses.
+                if (chordHeld && (pressedCount > 0 || bufferedCombatKey != CombatInputKey.None || IsChordOnBeat(now)))
+                {
+                    bool resolved = ResolvePatternInput(actor, expectedCombatAction, now);
+                    bufferedCombatKey = CombatInputKey.None;
+                    return resolved;
+                }
+                if (pressedCount == 0) return false;
+                if (pressedCount > 1 || !IsChordMember(expectedCombatAction, key))
+                {
+                    FailCombatBeat("双键必须同时按下");
+                    return true;
+                }
+                if (bufferedCombatKey == CombatInputKey.None)
+                {
+                    bufferedCombatKey = key;
+                    bufferedCombatKeyDsp = now;
+                    return true;
+                }
+                FailCombatBeat("双键必须保持同时按住");
+                return true;
+            }
+            if (pressedCount == 0) return false;
+            if (pressedCount > 1) { FailCombatBeat("顺序连击不能同时按键"); return true; }
+            if (expectedCombatStepCount > 1) return ResolveSequenceStep(actor, key, now);
+            return ResolveSingleKey(actor, key, now);
+        }
+
+        private bool ProcessLeftHandCombatInput(double now, bool qPressed, bool ePressed, bool qHeld, bool eHeld,
+            bool qReleased, bool eReleased, bool rightHandInputPressed)
+        {
+            if (!leftHandCueActive || leftHandSucceeded || !combatBeatPending) return false;
+            if (dualHandHoldPreviewActive) return false;
+            bool correctPressed = expectedLeftHandKey == CombatInputKey.Q ? qPressed : ePressed;
+            bool wrongPressed = expectedLeftHandKey == CombatInputKey.Q ? ePressed : qPressed;
+            bool correctHeld = expectedLeftHandKey == CombatInputKey.Q ? qHeld : eHeld;
+            bool correctReleased = expectedLeftHandKey == CombatInputKey.Q ? qReleased : eReleased;
+            int leftPressedCount = (qPressed ? 1 : 0) + (ePressed ? 1 : 0);
+
+            if (leftHandHoldRequired && leftHandHolding)
+            {
+                // An explicit release is authoritative. When J/K/SPACE is
+                // pressed in the same frame, ignore a transient held-state
+                // dropout and let the right-hand beat resolve normally.
+                if (correctReleased || (!correctHeld && !rightHandInputPressed))
+                {
+                    FailCombatBeat("持续声部提前松开");
+                    return true;
+                }
+                leftHandHoldProgress = Mathf.Clamp01((float)((now - leftHandHoldStartedDsp) /
+                    Math.Max(.05f, expectedLeftHandHoldDuration)));
+                if (leftHandHoldProgress >= 1f)
+                {
+                    CompleteLeftHandCombatInput(now);
+                    return true;
+                }
+                if (leftHandActionName != null)
+                    leftHandActionName.text = $"长 按 中  ·  保 持 不 松  {Mathf.RoundToInt(leftHandHoldProgress * 100f)}%";
+                return leftPressedCount > 0;
+            }
+
+            if (leftPressedCount == 0) return false;
+            double timingDelta = now - expectedLeftHandBeatDsp;
+            if (timingDelta < -CurrentCombatInputWindow)
+            {
+                // A sustained note may be pressed slightly before the cue and
+                // held through the beat. Start charging at the cue time so a
+                // normal frame boundary cannot turn a valid hold into a miss.
+                if (leftHandHoldRequired && correctPressed && -timingDelta <= CurrentCombatHoldEarlyBuffer)
+                {
+                    leftHandHolding = true;
+                    leftHandHoldStartedDsp = expectedLeftHandBeatDsp;
+                    leftHandHoldProgress = 0f;
+                    if (leftHandActionName != null) leftHandActionName.text = "长 按 中  ·  保 持 不 松";
+                    rhythmJudge.text = "左手持续声部已预备 · 保持按住";
+                    rhythmJudge.color = new Color(.34f, .88f, 1f);
+                    return true;
+                }
+                rhythmJudge.text = "左手输入稍早 · 等待蓝色声纹收束";
+                rhythmJudge.color = new Color(1f, .72f, .28f);
+                return true;
+            }
+            if (timingDelta > CurrentCombatInputWindow)
+            {
+                rhythmJudge.text = "左手声部已错过 · 本拍仍将结算";
+                rhythmJudge.color = new Color(1f, .72f, .28f);
+                return true;
+            }
+            if (leftPressedCount > 1 || wrongPressed || !correctPressed)
+            {
+                FailCombatBeat("左手声部按键错误");
+                return true;
+            }
+            if (!leftHandHoldRequired)
+            {
+                CompleteLeftHandCombatInput(now);
+                return true;
+            }
+
+            leftHandHolding = true;
+            leftHandHoldStartedDsp = now;
+            leftHandHoldProgress = 0f;
+            if (leftHandActionName != null) leftHandActionName.text = "长 按 中  ·  保 持 不 松";
+            rhythmJudge.text = "左手持续声部已接入 · 不要提前松开";
+            rhythmJudge.color = new Color(.34f, .88f, 1f);
+            return true;
+        }
+
+        private void CompleteLeftHandCombatInput(double now)
+        {
+            leftHandSucceeded = true;
+            leftHandHolding = false;
+            leftHandHoldProgress = 1f;
+            if (leftHandActionKey != null) leftHandActionKey.text = "✓";
+            if (leftHandActionName != null)
+            {
+                leftHandActionName.text = leftHandHoldRequired ? "长 按 完 成  ✓" : "短 按 命 中  ✓";
+                leftHandActionName.color = new Color(.42f, 1f, .78f);
+            }
+            PlayerCombatFlourish3D.CreateDualHandResonance(PlayerPosition + Vector3.up * .86f,
+                expectedLeftHandKey == CombatInputKey.Q, leftHandHoldRequired);
+            audioSource.PlayOneShot(highTone, .46f);
+            if (rightHandSucceeded) FinalizeCombatBeatSuccess(now, rightHandDodgeResponse);
+            else
+            {
+                rhythmJudge.text = "左手声部完成 · 等待右手主旋律";
+                rhythmJudge.color = new Color(.42f, 1f, .78f);
+            }
+        }
+
+        private static bool IsChordAction(CombatBeatAction action)
+        {
+            return action == CombatBeatAction.JKWave || action == CombatBeatAction.JDodgeStrike ||
+                   action == CombatBeatAction.KDodgeTripleArc;
+        }
+
+        private static bool ExpectedChordIsHeld(CombatBeatAction action, bool jHeld, bool kHeld, bool spaceHeld)
+        {
+            return action switch
+            {
+                CombatBeatAction.JKWave => jHeld && kHeld && !spaceHeld,
+                CombatBeatAction.JDodgeStrike => jHeld && spaceHeld && !kHeld,
+                CombatBeatAction.KDodgeTripleArc => kHeld && spaceHeld && !jHeld,
+                _ => false
+            };
+        }
+
+        private static bool IsChordMember(CombatBeatAction action, CombatInputKey key)
+        {
+            return action switch
+            {
+                CombatBeatAction.JKWave => key == CombatInputKey.J || key == CombatInputKey.K,
+                CombatBeatAction.JDodgeStrike => key == CombatInputKey.J || key == CombatInputKey.Space,
+                CombatBeatAction.KDodgeTripleArc => key == CombatInputKey.K || key == CombatInputKey.Space,
+                _ => false
+            };
+        }
+
+        private bool ResolveSingleKey(MeixiThirdPersonPlayer actor, CombatInputKey key, double now)
+        {
+            if (!IsExpectedStep(key, now)) { FailCombatBeat("节拍动作错误"); return true; }
+            CombatBeatAction action = expectedCombatAction;
+            bool executed = actor.ExecuteAuthoredRhythmAction(action, key, 0);
+            if (!executed) { FailCombatBeat("动作未命中"); return true; }
+            CompleteCombatBeatSuccess(now, action == CombatBeatAction.Dodge);
+            return true;
+        }
+
+        private bool ResolvePatternInput(MeixiThirdPersonPlayer actor, CombatBeatAction action, double now)
+        {
+            if (expectedCombatAction != action || !IsChordOnBeat(now)) { FailCombatBeat("组合节拍错误"); return true; }
+            bool executed = actor.ExecuteAuthoredRhythmAction(action, CombatInputKey.None, 0);
+            if (!executed) { FailCombatBeat("组合动作未命中"); return true; }
+            CompleteCombatBeatSuccess(now, false);
+            return true;
+        }
+
+        private bool ResolveSequenceStep(MeixiThirdPersonPlayer actor, CombatInputKey key, double now)
+        {
+            if (key != expectedCombatSteps[expectedCombatStepIndex])
+            { FailCombatBeat("连击顺序错误"); return true; }
+            if (expectedCombatStepIndex == 0)
+            {
+                if (Math.Abs(now - expectedCombatStepDsps[0]) > CurrentCombatInputWindow)
+                { FailCombatBeat("连击起手没有踩中鼓点"); return true; }
+            }
+            else
+            {
+                double interval = now - lastCombatSequenceInputDsp;
+                if (interval < 0.008d || interval > CurrentCombatSequenceMaxGap)
+                { FailCombatBeat("连击间隔错误"); return true; }
+                if (Math.Abs(now - expectedCombatStepDsps[expectedCombatStepIndex]) > CurrentCombatSequenceStepTolerance)
+                { FailCombatBeat("连击未跟随当前鼓点"); return true; }
+            }
+            if (!actor.ExecuteAuthoredRhythmAction(expectedCombatAction, key, expectedCombatStepIndex))
+            { FailCombatBeat("连击有效距离不足"); return true; }
+            lastCombatSequenceInputDsp = now;
+            expectedCombatStepIndex++;
+            if (expectedCombatStepIndex >= expectedCombatStepCount) CompleteCombatBeatSuccess(now, false);
+            else
+            {
+                combatActionKey.text = CombatInputKeyText(expectedCombatSteps[expectedCombatStepIndex]);
+                combatActionName.text = $"{CombatActionName(expectedCombatAction)}  {expectedCombatStepIndex + 1}/{expectedCombatStepCount}";
+            }
+            return true;
+        }
+
+        private bool IsExpectedStep(CombatInputKey key, double now)
+        {
+            return combatBeatPending && expectedCombatStepCount > 0 && expectedCombatSteps[expectedCombatStepIndex] == key &&
+                   Math.Abs(now - expectedCombatStepDsps[expectedCombatStepIndex]) <= CurrentCombatInputWindow;
+        }
+
+        private bool IsChordOnBeat(double now)
+        {
+            if (!combatBeatPending) return false;
+            double target = expectedCombatStepDsps[0];
+            double first = bufferedCombatKey != CombatInputKey.None ? bufferedCombatKeyDsp : now;
+            return Math.Abs(first - target) <= CurrentCombatInputWindow + CurrentCombatChordWindow &&
+                   Math.Abs(now - target) <= CurrentCombatInputWindow + CurrentCombatChordWindow;
+        }
+
+        private void CompleteCombatBeatSuccess(double now, bool dodge)
+        {
+            rightHandSucceeded = true;
+            rightHandDodgeResponse = dodge;
+            if (leftHandCueActive && !leftHandSucceeded)
+            {
+                bufferedCombatKey = CombatInputKey.None;
+                lastCombatSequenceInputDsp = 0d;
+                if (combatActionKey != null) combatActionKey.text = "✓";
+                if (combatActionName != null)
+                {
+                    combatActionName.text = "右 手 主 旋 律 完 成";
+                    combatActionName.color = new Color(1f, .72f, .30f);
+                }
+                rhythmJudge.text = leftHandHoldRequired
+                    ? "右手完成 · 继续维持左手持续声部"
+                    : "右手完成 · 等待左手短拍";
+                rhythmJudge.color = new Color(.42f, .88f, 1f);
+                return;
+            }
+            FinalizeCombatBeatSuccess(now, dodge);
+        }
+
+        private void FinalizeCombatBeatSuccess(double now, bool dodge)
+        {
+            combatBeatPending = false;
+            bufferedCombatKey = CombatInputKey.None;
+            lastCombatSequenceInputDsp = 0d;
+            combatBeatSucceeded = true;
+            threatDamageResolved = true;
+            resolvedThreatId = activeThreatId;
+            if (dodge) dodgedThreatId = activeThreatId;
+            else counteredThreatId = activeThreatId;
+            playerDamageImmuneUntilDsp = Math.Max(playerDamageImmuneUntilDsp, currentThreatResolveDsp + 0.48d);
+            chapterOneCombatCombo++;
+            chapterOneCombatSuccesses++;
+            chapterOneCombatBestCombo = Mathf.Max(chapterOneCombatBestCombo, chapterOneCombatCombo);
+            MeleeForbiddenRing3D.ClearAll(true);
+            TrackingAttackTelegraph3D.ClearAll();
+            EnemyMusicAttackVfx3D.ShatterAllAt(CombatTargetPosition + Vector3.up * 0.95f);
+            rhythmJudge.text = $"PERFECT  {CombatActionName(expectedCombatAction)}";
+            rhythmJudge.color = new Color(0.36f, 1f, 0.84f);
+            if (combatActionKey != null) combatActionKey.text = "✓";
+            if (leftHandCueActive && leftHandActionKey != null) leftHandActionKey.text = "✓";
+            orbitCamera?.TriggerCombatImpact(true);
+            audioSource.PlayOneShot(highTone, 0.75f);
+            Debug.Log($"[MeixiBeat] success action={expectedCombatAction} threat={activeThreatId} input={now:F3}");
+        }
+
+        private static string CombatInputKeyText(CombatInputKey key) => key switch
+        {
+            CombatInputKey.J => "J",
+            CombatInputKey.K => "K",
+            CombatInputKey.Space => "SPACE",
+            CombatInputKey.Q => "Q",
+            CombatInputKey.E => "E",
+            _ => "·"
+        };
 
         private void UpdateAutomatedRhythmValidation()
         {
@@ -3144,7 +6078,8 @@ namespace MeixiEcho
                     DamagePlayer();
                     player?.TriggerHitReaction(CombatTargetPosition);
                     orbitCamera?.TriggerRhythmMiss();
-                    SpawnMissBeatVfx(destination + Vector3.up * 0.9f);
+                SpawnMissBeatVfx(destination + Vector3.up * 0.9f);
+                    if (!defeatOpen) creekSpirit?.RepositionAfterPlayerMistake(PlayerPosition);
                 }
                 combatBeatPending = false;
                 combatBeatSucceeded = false;
@@ -3174,9 +6109,17 @@ namespace MeixiEcho
                 rhythmJudge.text = "瞬 身 残 响 · 追 踪 丢 失";
                 rhythmJudge.color = new Color(0.34f, 1f, 0.82f);
                 if (combatActionKey != null) combatActionKey.text = "闪";
-                ReportPerfectDodge(Time.time + 0.34f);
+                meleeCounterThreatId = activeThreatId;
+                meleeCounterUntilDsp = AudioSettings.dspTime + 0.78d;
+                if (combatActionKey != null) combatActionKey.text = "J";
+                if (combatActionName != null)
+                {
+                    combatActionName.text = "瞬 身 后 摇 · J 突 进 反 击";
+                    combatActionName.color = new Color(1f, 0.80f, 0.28f);
+                }
+                ReportPerfectDodge(Time.time + 0.78f);
                 Debug.Log($"[MeixiSpatial] Dodge success id={activeThreatId} enemyDistance={enemyDelta.magnitude:F2} " +
-                          $"immuneUntil={playerDamageImmuneUntilDsp:F3} health={health}");
+                          $"immuneUntil={playerDamageImmuneUntilDsp:F3} counterUntil={meleeCounterUntilDsp:F3} health={health}");
             }
             else
             {
@@ -3190,7 +6133,7 @@ namespace MeixiEcho
             if (!chapterOneCombatActive || finishingStrike || !combatBeatPending ||
                 expectedCombatAction != CombatBeatAction.AttackTwo) return false;
             double delta = Math.Abs(AudioSettings.dspTime - expectedCombatBeatDsp);
-            if (delta > CombatInputWindow)
+            if (delta > CurrentCombatInputWindow)
             {
                 rhythmJudge.text = AudioSettings.dspTime < expectedCombatBeatDsp ? "K 抢拍 · 等待和弦聚合" : "K 晚拍 · 追踪仍未解除";
                 rhythmJudge.color = new Color(1f, 0.52f, 0.26f);
@@ -3238,6 +6181,7 @@ namespace MeixiEcho
             EnemyMusicAttackVfx3D.ShatterAllAt(origin + Vector3.up * 0.8f, new Color(1f, 0.08f, 0.16f));
             TrackingAttackTelegraph3D.ClearAll();
             MeleeForbiddenRing3D.ClearAll(false);
+            if (!defeatOpen) creekSpirit?.RepositionAfterPlayerMistake(PlayerPosition);
             rhythmJudge.text = expectedCombatAction == CombatBeatAction.AttackTwo
                 ? "误按 J · 闯入禁区，被追踪和弦反击"
                 : "误按 J · 闯入禁区，被敌方节拍反击";
@@ -3251,7 +6195,7 @@ namespace MeixiEcho
 
         public bool ResolveEnemyAttack(int attackType, Vector3 origin)
         {
-            if (!chapterOneCombatActive || finishingStrike) return false;
+            if (!chapterOneCombatActive || finishingStrike || CombatPhaseResting) return false;
             if (activeThreatId <= 0 || resolvedThreatId == activeThreatId) return false;
             if (dodgedThreatId == activeThreatId || counteredThreatId == activeThreatId || combatBeatSucceeded)
             {
@@ -3263,6 +6207,11 @@ namespace MeixiEcho
                 MeleeForbiddenRing3D.ClearAll(true);
                 rhythmJudge.text = rangedCounter ? "追 踪 和 弦 已 被 破 谱" : "追 踪 攻 击 落 空";
                 rhythmJudge.color = new Color(0.32f, 0.94f, 0.86f);
+                if (!rangedCounter && MeleeCounterWindowOpen)
+                {
+                    rhythmJudge.text = "追踪攻击落空 · 立即按 J 突进反击";
+                    if (combatActionKey != null) combatActionKey.text = "J";
+                }
                 Debug.Log($"[MeixiSpatial] Threat invalidated response={(rangedCounter ? "K" : "SPACE")} id={activeThreatId} health={health}");
                 return false;
             }
@@ -3284,10 +6233,12 @@ namespace MeixiEcho
             player?.TriggerHitReaction(origin);
             orbitCamera?.TriggerCombatImpact(false);
             SpawnMissBeatVfx(PlayerPosition + Vector3.up * 0.9f);
+            if (!defeatOpen) creekSpirit?.RepositionAfterPlayerMistake(PlayerPosition);
             rhythmJudge.text = attackType switch
             {
                 0 => "高抛坠音命中 · 回响力受损",
                 1 => "低音冲击波命中 · 回响力受损",
+                3 => "音符冲刺贯穿 · 回响力受损",
                 _ => "追踪和弦合击 · 回响力受损"
             };
             rhythmJudge.color = new Color(1f, 0.28f, 0.24f);
@@ -3296,12 +6247,117 @@ namespace MeixiEcho
             return true;
         }
 
+        public bool TryGetAuthoredRhythmMove(CombatBeatAction action, CombatInputKey stepKey, int stepIndex,
+            Vector3 origin, out Vector3 destination)
+        {
+            destination = origin;
+            if (!chapterOneCombatActive || creekSpirit == null) return false;
+            Vector3 enemy = CombatTargetPosition;
+            Vector3 fromEnemy = Vector3.ProjectOnPlane(origin - enemy, Vector3.up);
+            if (fromEnemy.sqrMagnitude < 0.01f) fromEnemy = -playerTransform.forward;
+            fromEnemy.Normalize();
+            if (action == CombatBeatAction.Dodge)
+            {
+                destination = SelectBlinkDestination(origin, fromEnemy);
+                return Vector3.ProjectOnPlane(destination - origin, Vector3.up).magnitude >= 1.20f &&
+                       Vector3.ProjectOnPlane(destination - enemy, Vector3.up).magnitude >= 2.35f;
+            }
+            if (action == CombatBeatAction.JDodgeStrike)
+            {
+                Vector3 side = Vector3.Cross(Vector3.up, fromEnemy).normalized;
+                destination = enemy + (fromEnemy * 1.58f + side * 0.72f).normalized * 1.82f;
+                destination.y = origin.y;
+                return true;
+            }
+            if (action == CombatBeatAction.TripleJ && stepKey == CombatInputKey.J)
+            {
+                float crossDistance = 1.62f + Mathf.Clamp(stepIndex, 0, 2) * .10f;
+                destination = enemy - fromEnemy * crossDistance;
+                destination.y = origin.y;
+                return Vector3.ProjectOnPlane(enemy - origin, Vector3.up).magnitude <= 5.80f;
+            }
+            bool meleeStep = action == CombatBeatAction.AttackOne ||
+                             ((action == CombatBeatAction.TripleJ || action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff) && stepKey == CombatInputKey.J);
+            if (!meleeStep) return true;
+            float distance = Vector3.ProjectOnPlane(enemy - origin, Vector3.up).magnitude;
+            if (distance > 4.80f) return false;
+            destination = enemy + fromEnemy * 1.72f;
+            destination.y = origin.y;
+            return true;
+        }
+
+        public bool ResolveAuthoredRhythmImpact(CombatBeatAction action, CombatInputKey stepKey, int stepIndex,
+            Vector3 origin, Vector3 destination, Vector3 forward)
+        {
+            if (!chapterOneCombatActive || creekSpirit == null || finishingStrike || CombatPhaseResting) return false;
+            if (action == CombatBeatAction.Dodge)
+            {
+                bool safe = Vector3.ProjectOnPlane(destination - CombatTargetPosition, Vector3.up).magnitude >= 2.35f &&
+                            Vector3.ProjectOnPlane(destination - origin, Vector3.up).magnitude >= 1.20f;
+                PlayBlinkFx(origin, destination, safe);
+                return safe;
+            }
+
+            bool meleeImpact = action == CombatBeatAction.AttackOne || action == CombatBeatAction.JDodgeStrike ||
+                               ((action == CombatBeatAction.TripleJ || action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff) && stepKey == CombatInputKey.J);
+            if (meleeImpact)
+            {
+                Vector3 hitDelta = CombatTargetPosition - playerTransform.position;
+                hitDelta.y = 0f;
+                if (hitDelta.magnitude > 2.45f || (hitDelta.sqrMagnitude > 0.01f && Vector3.Dot(forward.normalized, hitDelta.normalized) < 0.10f))
+                    return false;
+            }
+
+            bool hit = creekSpirit.TryReceiveRhythmActionHit(action, stepKey, stepIndex);
+            if (!hit) return false;
+            Vector3 impact = creekSpirit.transform.position + Vector3.up * 0.92f;
+            if (action == CombatBeatAction.TripleJ)
+                PlayerCombatFlourish3D.CreatePhaseThroughSlash(origin, destination, impact, Mathf.Clamp(stepIndex, 0, 2));
+            else if (action == CombatBeatAction.JKWave)
+                PlayerCombatFlourish3D.CreateComboWave(origin + Vector3.up * 0.85f, impact, forward);
+            else if (action == CombatBeatAction.JDodgeStrike)
+            {
+                PlayerCombatFlourish3D.CreateBlink(origin, destination, true);
+                PlayerCombatFlourish3D.CreateBlinkStrike(destination + Vector3.up * 0.78f, impact, forward);
+                PlayerCombatFlourish3D.CreateComboWave(destination + Vector3.up * .64f, impact, forward);
+            }
+            else if (action == CombatBeatAction.KDodgeTripleArc)
+                PlayerCombatFlourish3D.CreateTripleArc(origin + Vector3.up * 1.02f, impact, forward);
+            else if (stepKey == CombatInputKey.K || action == CombatBeatAction.AttackTwo)
+            {
+                PlayerCombatFlourish3D.CreateRangedCast(origin + Vector3.up * 1.02f, forward, true);
+                PlayerCombatFlourish3D.CreateRangedCounter(origin + Vector3.up * 0.95f, impact);
+            }
+            else
+                PlayerCombatFlourish3D.CreateMelee(origin, impact, forward, true, Mathf.Clamp(stepIndex, 0, 2));
+
+            if (stepIndex >= 2 && (action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff))
+                PlayerCombatFlourish3D.CreateSequenceFinale(origin, impact, forward,
+                    action == CombatBeatAction.KJKRiff);
+
+            if (action != CombatBeatAction.TripleJ)
+                EnemyMusicImpact3D.Create(impact, CombatActionColor(action),
+                    action == CombatBeatAction.JDodgeStrike ? 5.4f : action == CombatBeatAction.JKWave ? 4.2f : 3.2f,
+                    action == CombatBeatAction.JDodgeStrike ? 0.82f : 0.62f, 18 + stepIndex * 5);
+            if (action != CombatBeatAction.TripleJ || stepIndex >= 2)
+                SpawnGroundSigil(new Vector3(impact.x, 0.06f, impact.z),
+                    action == CombatBeatAction.TripleJ ? 2.0f : 2.4f + stepIndex * 0.20f,
+                    action == CombatBeatAction.TripleJ ? .38f : 0.55f, CombatActionColor(action));
+            SpawnBeatShardBurst(impact,
+                action == CombatBeatAction.TripleJ ? 3 + stepIndex * 2 : 22 + stepIndex * 5,
+                action == CombatBeatAction.TripleJ ? 3.1f : 4.2f, CombatActionColor(action));
+            orbitCamera?.TriggerMeleeImpact(Mathf.Clamp(stepIndex, 0, 2), true);
+            audioSource.PlayOneShot(stepKey == CombatInputKey.K || action == CombatBeatAction.AttackTwo ? highTone : lowTone, 0.82f);
+            return true;
+        }
+
         public bool TryStartMeleeLunge(Vector3 origin, out Vector3 direction)
         {
             Vector3 delta = CombatTargetPosition - origin;
             delta.y = 0f;
             direction = delta.sqrMagnitude > 0.01f ? delta.normalized : playerTransform.forward;
-            bool inAcquisitionRange = chapterOneCombatActive && creekSpirit != null && delta.magnitude <= 4.80f;
+            float acquisitionRange = MeleeCounterWindowOpen ? 5.60f : 4.80f;
+            bool inAcquisitionRange = chapterOneCombatActive && !CombatPhaseResting && creekSpirit != null && delta.magnitude <= acquisitionRange;
             Debug.Log($"[MeixiSpatial] Melee acquire distance={delta.magnitude:F2} armed={inAcquisitionRange}");
             if (!inAcquisitionRange)
             {
@@ -3312,11 +6368,12 @@ namespace MeixiEcho
             return inAcquisitionRange;
         }
 
-        public bool ResolvePlayerMelee(Vector3 origin, Vector3 forward)
+        public bool ResolvePlayerMelee(Vector3 origin, Vector3 forward, int comboStep)
         {
             if (!chapterOneCombatActive || creekSpirit == null || finishingStrike) return false;
-            bool onBeat = IsChapterMusicOnBeat();
-            bool hit = creekSpirit.TryReceiveMeleeHit(origin, forward, onBeat);
+            bool counterWindow = MeleeCounterWindowOpen;
+            bool onBeat = counterWindow || IsChapterMusicOnBeat();
+            bool hit = creekSpirit.TryReceiveMeleeHit(origin, forward, onBeat, comboStep, counterWindow);
             if (!hit)
             {
                 rhythmJudge.text = "近 战 落 空 · 需 靠 近 溪 灵";
@@ -3324,24 +6381,36 @@ namespace MeixiEcho
                 ShowToast("突 进 落 空", new Color(0.52f, 0.76f, 0.90f));
                 return false;
             }
+            if (counterWindow)
+            {
+                meleeCounterThreatId = -1;
+                meleeCounterUntilDsp = 0d;
+                chapterOneCombatCombo++;
+                if (combatActionKey != null) combatActionKey.text = "反";
+                if (combatActionName != null)
+                {
+                    combatActionName.text = "J 完 美 近 战 反 击";
+                    combatActionName.color = new Color(1f, 0.80f, 0.28f);
+                }
+            }
             // 致命一击已经切入专属终结演出，不再叠加普通 J 命中特效。
             if (finishingStrike) return true;
             Vector3 meleeImpact = creekSpirit.transform.position + Vector3.up * 0.92f;
-            PlayerCombatFlourish3D.CreateMelee(origin, meleeImpact, forward, onBeat);
+            PlayerCombatFlourish3D.CreateMelee(origin, meleeImpact, forward, onBeat, comboStep);
             EnemyMusicImpact3D.Create(meleeImpact, onBeat ? Color.white : new Color(0.18f, 0.94f, 1f),
-                onBeat ? 3.0f : 2.2f, onBeat ? 0.58f : 0.44f, onBeat ? 16 : 10);
+                onBeat ? 3.0f + comboStep * 0.28f : 2.2f, onBeat ? 0.58f : 0.44f, onBeat ? 12 + comboStep * 2 : 8);
             PlayCombatResponseFx(CombatBeatAction.AttackOne, onBeat, false);
-            orbitCamera?.TriggerRhythmCut(1, onBeat);
+            orbitCamera?.TriggerMeleeImpact(comboStep, onBeat);
             audioSource.PlayOneShot(lowTone, 0.82f);
             if (meleeAutoValidation && captureMode && !captureDone)
                 captureAt = Time.unscaledTime + 0.07f;
-            Debug.Log($"[MeixiSpatial] Melee hit onBeat={onBeat}");
+            Debug.Log($"[MeixiSpatial] Melee hit combo={comboStep + 1} onBeat={onBeat} counter={counterWindow}");
             return true;
         }
 
         public void FirePlayerNoteWave(Vector3 origin, Vector3 direction)
         {
-            if (!chapterOneCombatActive || creekSpirit == null || finishingStrike) return;
+            if (!chapterOneCombatActive || creekSpirit == null || finishingStrike || CombatPhaseResting) return;
             bool countered = TryResolveRangedCounter();
             bool onBeat = countered || IsChapterMusicOnBeat();
             Vector3 targetDirection = CombatTargetPosition + Vector3.up * 0.85f - origin;
@@ -3356,7 +6425,7 @@ namespace MeixiEcho
 
         public void ResolvePlayerRangedHit(CreekRhythmEnemy3D target, bool onBeat, Vector3 impactPosition)
         {
-            if (!chapterOneCombatActive || target == null || finishingStrike) return;
+            if (!chapterOneCombatActive || target == null || finishingStrike || CombatPhaseResting) return;
             if (!target.TryReceiveRangedHit(onBeat)) return;
             // 致命 K 命中会在 TryReceiveRangedHit 内启动终结演出，跳过普通远攻爆发以免遮挡特写。
             if (finishingStrike) return;
@@ -3374,22 +6443,187 @@ namespace MeixiEcho
         public bool IsChapterMusicOnBeat(float windowSeconds = 0.12f)
         {
             if (!chapterOneCombatActive) return false;
+            ChapterOneBattleTimeline timeline = chapterOneCombatPhase >= 3 && phaseThreeBattleTimeline != null && phaseThreeBattleTimeline.IsValid
+                ? phaseThreeBattleTimeline : chapterOneBattleTimeline;
+            if (timeline != null && timeline.IsValid)
+                return timeline.DistanceToNearestBeat(AudioSettings.dspTime, chapterOneBeatStart) <= windowSeconds;
             double beatLength = 60d / Math.Max(1f, chapterOneCombatBpm);
             double elapsed = Math.Max(0d, AudioSettings.dspTime - chapterOneBeatStart);
             double phase = elapsed % beatLength;
             return phase <= windowSeconds || phase >= beatLength - windowSeconds;
         }
 
+        private static void SetCombatBarVisualAmount(Image image, float amount)
+        {
+            if (image == null) return;
+            amount = Mathf.Clamp01(amount);
+            image.fillAmount = amount;
+            RectTransform rect = image.rectTransform;
+            const float minX = .015f;
+            const float maxX = .985f;
+            rect.anchorMin = new Vector2(minX, .15f);
+            rect.anchorMax = new Vector2(Mathf.Lerp(minX, maxX, amount), .85f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
         public void ReportCombatPhase(int phase)
         {
             chapterOneCombatPhase = Mathf.Clamp(phase, 1, 3);
             string phaseName = chapterOneCombatPhase switch { 1 => "听潮", 2 => "逆流", _ => "回声暴雨" };
-            ShowToast($"第 {chapterOneCombatPhase} 段 · {phaseName}", chapterOneCombatPhase == 3
-                ? new Color(1f, 0.34f, 0.24f) : new Color(1f, 0.72f, 0.28f));
+            if (creekSpirit != null)
+            {
+                float overallHealth = Mathf.Clamp01(creekSpirit.Health /
+                    (float)Mathf.Max(1, creekSpirit.HealthMaximum));
+                SetCombatBarVisualAmount(combatEnemyHealthFill, overallHealth);
+                SetCombatBarVisualAmount(combatEnemyHealthChipFill, overallHealth);
+                Debug.Log($"[MeixiBossHud] phase={chapterOneCombatPhase} overall={overallHealth:F3} " +
+                          $"health={creekSpirit.Health}/{creekSpirit.HealthMaximum}.");
+            }
+            if (chapterOneCombatPhase < 3)
+                ShowToast($"第 {chapterOneCombatPhase} 段 · {phaseName}", new Color(1f, 0.72f, 0.28f));
             rhythmJudge.text = chapterOneCombatPhase == 3
                 ? "红区锁定加速 · 观察后瞬身"
                 : "声纹护甲破裂 · 攻击节奏加快";
             BurstSoulParticles(CombatTargetPosition + Vector3.up * 1.1f);
+            EnemyMusicImpact3D.Create(CombatTargetPosition + Vector3.up * 0.45f,
+                chapterOneCombatPhase == 3 ? new Color(1f, 0.10f, 0.22f) : new Color(1f, 0.58f, 0.16f),
+                chapterOneCombatPhase == 3 ? 6.2f : 5.0f, 0.92f, 32);
+        }
+
+        public void BeginCombatPhaseTransition(int phase, double restUntilDsp)
+        {
+            if (!chapterOneCombatActive || finishingStrike) return;
+            chapterOneCombatPhase = Mathf.Clamp(phase, 1, 3);
+            combatPhaseRestUntilDsp = Math.Max(AudioSettings.dspTime + CombatPhaseRestSeconds, restUntilDsp);
+            if (chapterOneCombatPhase == 3 && chapterOnePhaseThreeMusic != null && musicSource != null)
+            {
+                // Phase three gets its own tense BGM. Start it on a scheduled DSP
+                // boundary after the phase banner so the first cue is aligned to
+                // the analyzed phase-three beat map instead of inheriting the old
+                // song's clock.
+                double phaseMusicStart = combatPhaseRestUntilDsp + .12d;
+                musicSource.Stop();
+                musicSource.clip = chapterOnePhaseThreeMusic;
+                musicSource.loop = true;
+                musicSource.pitch = 1f;
+                musicSource.volume = .34f;
+                musicSource.time = 0f;
+                musicSource.PlayScheduled(phaseMusicStart);
+                chapterOneBeatStart = phaseMusicStart;
+                chapterOneCombatBpm = phaseThreeBattleTimeline != null && phaseThreeBattleTimeline.IsValid
+                    ? phaseThreeBattleTimeline.Bpm : chapterOneCombatBpm;
+                Debug.Log($"[MeixiAudio] Phase-three BGM scheduled at DSP {phaseMusicStart:F3}: {chapterOnePhaseThreeMusic.name}");
+            }
+            combatBeatPending = false;
+            combatBeatSucceeded = false;
+            threatDamageResolved = true;
+            resolvedThreatId = activeThreatId;
+            activeThreatId = 0;
+            currentThreatType = -1;
+            currentThreatResolveDsp = 0d;
+            expectedCombatAction = CombatBeatAction.None;
+            expectedCombatStepCount = 0;
+            expectedCombatStepIndex = 0;
+            bufferedCombatKey = CombatInputKey.None;
+            bufferedCombatKeyDsp = 0d;
+            lastCombatSequenceInputDsp = 0d;
+            ResetDualHandCombatCue();
+            meleeCounterThreatId = -1;
+            meleeCounterUntilDsp = 0d;
+            playerDamageImmuneUntilDsp = Math.Max(playerDamageImmuneUntilDsp, combatPhaseRestUntilDsp + .24d);
+            TrackingAttackTelegraph3D.ClearAll();
+            EnemyMusicAttackVfx3D.ClearAll();
+            MeleeForbiddenRing3D.ClearAll(true);
+            player?.ResetInputTransientState();
+
+            ReportCombatPhase(chapterOneCombatPhase);
+            string phaseName = chapterOneCombatPhase == 2 ? "逆流" : "回声暴雨";
+            if (combatPhaseBannerRoutine != null) StopCoroutine(combatPhaseBannerRoutine);
+            combatPhaseBannerRoutine = null;
+            if (chapterOneCombatPhase == 3) ShowPhaseThreeGuide(phaseName);
+            else combatPhaseBannerRoutine = StartCoroutine(ShowCombatPhaseBanner(chapterOneCombatPhase, phaseName));
+            if (combatActionKey != null) combatActionKey.text = "—";
+            if (combatActionName != null)
+            {
+                combatActionName.text = "节 拍 休 止 · 等 待 新 指 令";
+                combatActionName.color = new Color(.62f, .90f, .94f);
+            }
+            Debug.Log($"[MeixiPhaseRest] phase={chapterOneCombatPhase} start={AudioSettings.dspTime:F3} " +
+                      $"until={combatPhaseRestUntilDsp:F3}; old threat cancelled.");
+        }
+
+        private void ShowPhaseThreeGuide(string phaseName)
+        {
+            if (combatPhaseBanner == null || combatPhaseBannerGroup == null || combatPhaseBannerText == null) return;
+            phaseThreeGuideOpen = true;
+            phaseThreeGuidePreviousTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+            phaseThreeGuidePreviousAudioPause = AudioListener.pause;
+            Time.timeScale = 0f;
+            AudioListener.pause = true;
+            player?.ResetInputTransientState();
+
+            combatPhaseBanner.SetActive(true);
+            combatPhaseBanner.transform.SetAsLastSibling();
+            combatPhaseBanner.transform.localScale = Vector3.one;
+            combatPhaseBannerGroup.alpha = 1f;
+            combatPhaseBannerGroup.blocksRaycasts = true;
+            combatPhaseBannerText.color = new Color(1f, .36f, .28f);
+            combatPhaseBannerText.text =
+                $"第 三 阶 段 · {phaseName}\n" +
+                "<size=20>左手 Q / E 维持声部　·　右手 J / K / SPACE 回应</size>\n" +
+                "<size=16>ENTER / SPACE / E 或点击确认后继续</size>";
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            Debug.Log("[MeixiPhaseGuide] Phase three guide opened; waiting for manual confirmation.");
+        }
+
+        private void DismissPhaseThreeGuide()
+        {
+            if (!phaseThreeGuideOpen) return;
+            phaseThreeGuideOpen = false;
+            Time.timeScale = phaseThreeGuidePreviousTimeScale > 0f ? phaseThreeGuidePreviousTimeScale : 1f;
+            AudioListener.pause = phaseThreeGuidePreviousAudioPause;
+            if (combatPhaseBannerGroup != null)
+            {
+                combatPhaseBannerGroup.alpha = 0f;
+                combatPhaseBannerGroup.blocksRaycasts = false;
+            }
+            if (combatPhaseBanner != null) combatPhaseBanner.SetActive(false);
+
+            double safeResumeDsp = AudioSettings.dspTime + .95d;
+            combatPhaseRestUntilDsp = safeResumeDsp;
+            playerDamageImmuneUntilDsp = Math.Max(playerDamageImmuneUntilDsp, safeResumeDsp + .20d);
+            creekSpirit?.ResumeAfterPhaseGuide(safeResumeDsp);
+            lastDualHandHudPhase = -1;
+            player?.ResetInputTransientState();
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            Debug.Log($"[MeixiPhaseGuide] Phase three guide confirmed; combat resumes at {safeResumeDsp:F3}.");
+        }
+
+        private IEnumerator ShowCombatPhaseBanner(int phase, string phaseName)
+        {
+            if (combatPhaseBanner == null || combatPhaseBannerGroup == null || combatPhaseBannerText == null) yield break;
+            combatPhaseBanner.SetActive(true);
+            combatPhaseBanner.transform.SetAsLastSibling();
+            combatPhaseBannerText.text =
+                $"第 二 阶 段 · {phaseName}\n<size=18>节 拍 休 止 · 新 指 令 即 将 出 现</size>";
+            combatPhaseBannerText.color = new Color(1f, 0.68f, 0.20f);
+            float startedAt = Time.unscaledTime;
+            const float duration = 1.65f;
+            while (Time.unscaledTime - startedAt < duration)
+            {
+                float age = Time.unscaledTime - startedAt;
+                float enter = Mathf.Clamp01(age / 0.16f);
+                float exit = 1f - Mathf.Clamp01((age - duration + 0.32f) / 0.32f);
+                combatPhaseBannerGroup.alpha = Mathf.Min(enter, exit);
+                combatPhaseBanner.transform.localScale = Vector3.one * Mathf.Lerp(1.12f, 1f, Mathf.SmoothStep(0f, 1f, enter));
+                yield return null;
+            }
+            combatPhaseBannerGroup.alpha = 0f;
+            combatPhaseBanner.SetActive(false);
+            combatPhaseBannerRoutine = null;
         }
 
         private void PlayBlinkFx(Vector3 origin, Vector3 destination, bool safe)
@@ -3406,29 +6640,53 @@ namespace MeixiEcho
         public void ReportEnemyTelegraph(int attackType)
         {
             if (!chapterOneCombatActive) return;
+            if (attackType == 3)
+            {
+                rhythmJudge.color = new Color(1f, .46f, .14f);
+                rhythmJudge.text = "橙红五线谱锁定长距离冲刺 · SPACE 侧向瞬身";
+                return;
+            }
+            if (expectedCombatAction != CombatBeatAction.None)
+            {
+                rhythmJudge.color = CombatActionColor(expectedCombatAction);
+                rhythmJudge.text = $"敌人锁定鼓点 · {CombatActionKey(expectedCombatAction)} · {CombatActionName(expectedCombatAction)}";
+                return;
+            }
             rhythmJudge.color = new Color(1f, 0.24f, 0.20f);
             rhythmJudge.text = attackType switch
             {
                 0 => "朱红高抛音符追踪落点 · SPACE 瞬身脱离",
                 1 => "溪蓝低音冲击波对准你 · SPACE 向侧面瞬身",
+                3 => "橙红五线谱正在锁定冲刺路径 · SPACE 侧向瞬身",
                 _ => "五声音符群正在合围 · K 在节拍点远程破谱"
             };
         }
 
         private void FailCombatBeat(string reason)
         {
-            if (!combatBeatPending || finishingStrike) return;
+            if (!combatBeatPending || finishingStrike || CombatPhaseResting) return;
             combatBeatPending = false;
             combatBeatSucceeded = false;
+            bufferedCombatKey = CombatInputKey.None;
+            expectedCombatStepIndex = 0;
+            lastCombatSequenceInputDsp = 0d;
+            leftHandHolding = false;
+            threatDamageResolved = true;
+            resolvedThreatId = activeThreatId;
             chapterOneCombatCombo = 0;
             chapterOneCombatMisses++;
             rhythmJudge.text = reason + " · 回响力受损";
             rhythmJudge.color = new Color(1f, 0.30f, 0.28f);
             if (combatActionKey != null) combatActionKey.text = "×";
+            TrackingAttackTelegraph3D.ClearAll();
+            EnemyMusicAttackVfx3D.ShatterAllAt(CombatTargetPosition + Vector3.up * 0.9f,
+                new Color(0.82f, 0.16f, 1f));
+            MeleeForbiddenRing3D.ClearAll(false);
             DamagePlayer();
             player?.TriggerHitReaction(creekSpirit != null ? creekSpirit.transform.position : PlayerPosition + Vector3.forward);
             orbitCamera?.TriggerRhythmMiss();
             SpawnMissBeatVfx(PlayerPosition + Vector3.up * 0.9f);
+            if (!defeatOpen) creekSpirit?.RepositionAfterPlayerMistake(PlayerPosition);
             Debug.Log($"[MeixiRhythm] Miss {reason} action={expectedCombatAction} health={health} now={AudioSettings.dspTime:F3}");
         }
 
@@ -3437,6 +6695,12 @@ namespace MeixiEcho
             CombatBeatAction.AttackOne => "J",
             CombatBeatAction.AttackTwo => "K",
             CombatBeatAction.Dodge => "SPACE",
+            CombatBeatAction.JKWave => "J + K",
+            CombatBeatAction.JDodgeStrike => "J + SPACE",
+            CombatBeatAction.KDodgeTripleArc => "K + SPACE",
+            CombatBeatAction.TripleJ => "J · J · J",
+            CombatBeatAction.JKRiff => "J · K · J",
+            CombatBeatAction.KJKRiff => "K · J · K",
             _ => "·"
         };
 
@@ -3445,6 +6709,12 @@ namespace MeixiEcho
             CombatBeatAction.AttackOne => "攻 击 一 · 破 招",
             CombatBeatAction.AttackTwo => "攻 击 二 · 断 流",
             CombatBeatAction.Dodge => "踏 音 闪 避",
+            CombatBeatAction.JKWave => "双键 · 大型声浪",
+            CombatBeatAction.JDodgeStrike => "瞬身 · 强力近战",
+            CombatBeatAction.KDodgeTripleArc => "三重 · 抛物线音符",
+            CombatBeatAction.TripleJ => "三连击 · 鼓点追击",
+            CombatBeatAction.JKRiff => "多连击 · J K J",
+            CombatBeatAction.KJKRiff => "多连击 · K J K",
             _ => "聆 听 敌 人"
         };
 
@@ -3453,6 +6723,12 @@ namespace MeixiEcho
             CombatBeatAction.AttackOne => new Color(0.26f, 0.90f, 1f),
             CombatBeatAction.AttackTwo => new Color(1f, 0.48f, 0.22f),
             CombatBeatAction.Dodge => new Color(0.42f, 1f, 0.70f),
+            CombatBeatAction.JKWave => new Color(1f, 0.64f, 0.16f),
+            CombatBeatAction.JDodgeStrike => new Color(0.58f, 0.92f, 1f),
+            CombatBeatAction.KDodgeTripleArc => new Color(0.82f, 0.38f, 1f),
+            CombatBeatAction.TripleJ => new Color(1f, 0.30f, 0.22f),
+            CombatBeatAction.JKRiff => new Color(1f, 0.72f, 0.20f),
+            CombatBeatAction.KJKRiff => new Color(0.76f, 0.42f, 1f),
             _ => new Color(0.52f, 0.82f, 0.92f)
         };
 
@@ -3465,9 +6741,9 @@ namespace MeixiEcho
 
         public void ReportPerfectDodge(float counterDeadline)
         {
-            rhythmJudge.text = "完 美 瞬 身 · 追 踪 丢 失";
+            rhythmJudge.text = "完 美 瞬 身 · J 反 击 窗 口";
             rhythmJudge.color = new Color(1f, 0.82f, 0.28f);
-            ShowToast("◆ 完 美 瞬 身 · 安 全 落 点 ◆", new Color(1f, 0.78f, 0.24f));
+            ShowToast("◆ 完 美 瞬 身 · 立 即 按 J 反 击 ◆", new Color(1f, 0.78f, 0.24f));
             orbitCamera?.TriggerCombatImpact(true);
             audioSource.PlayOneShot(highTone, 0.85f);
         }
@@ -3494,7 +6770,7 @@ namespace MeixiEcho
 
         public void ReportPlayerCombatHit(int damage, bool counter, int remaining, int maximum)
         {
-            rhythmJudge.text = counter ? $"节 拍 强 化 · -{damage}" : $"声 纹 命 中 · -{damage}";
+            rhythmJudge.text = counter ? "节 拍 强 化 · 声纹破裂" : "声 纹 命 中";
             rhythmJudge.color = counter ? new Color(1f, 0.80f, 0.24f) : new Color(0.28f, 0.94f, 1f);
             ShowToast(counter ? "◆ 节 拍 强 化 ◆" : "声 纹 命 中", rhythmJudge.color);
             orbitCamera?.TriggerCombatImpact(counter);
@@ -3510,22 +6786,86 @@ namespace MeixiEcho
             musicSource.Stop();
             rhythmPanel.SetActive(false);
             orbitCamera?.EndCombatFocus();
-            BurstSoulParticles(position + Vector3.up);
             audioSource.PlayOneShot(successTone);
+            PlayChapterOneExplorationMusic();
+            SpawnChapterOneSoulEchoPickup(position);
+            if (soulCountText != null) soulCountText.text = "收集魂音：0 / 3";
+            if (storyProgressText != null) storyProgressText.text = "主线 03 / 04  ·  拾取魂音";
+            if (objectiveText != null) objectiveText.text = "前往溪灵爆炸的位置，靠近并拾取留下的魂音";
+            ShowToast("溪 灵 已 净 化 · 前 往 拾 取 魂 音", new Color(.42f, 1f, .78f));
+        }
 
-            if (pendingNode != null)
+        private void SpawnChapterOneSoulEchoPickup(Vector3 position)
+        {
+            if (chapterOneSoulPickup != null) Destroy(chapterOneSoulPickup.gameObject);
+            GameObject root = new("第一章_掉落魂音");
+            root.transform.position = position + Vector3.up * .88f;
+
+            GameObject core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            core.name = "魂音核心";
+            core.transform.SetParent(root.transform, false);
+            core.transform.localScale = Vector3.one * .34f;
+            Destroy(core.GetComponent<Collider>());
+            Renderer coreRenderer = core.GetComponent<Renderer>();
+            coreRenderer.sharedMaterial = new Material(gold);
+            if (coreRenderer.sharedMaterial.HasProperty("_EmissionColor"))
             {
-                pendingNode.gameObject.SetActive(true);
-                pendingNode.Complete();
-                pendingNode = null;
+                coreRenderer.sharedMaterial.SetColor("_EmissionColor", new Color(1f, .42f, .05f) * 2.8f);
+                coreRenderer.sharedMaterial.EnableKeyword("_EMISSION");
             }
-            completedMemories = 1;
-            soulCountText.text = "溪流魂音  1 / 1";
+
+            GameObject ringObject = new("魂音环");
+            ringObject.transform.SetParent(root.transform, false);
+            LineRenderer ring = ringObject.AddComponent<LineRenderer>();
+            ring.useWorldSpace = false;
+            ring.loop = true;
+            ring.positionCount = 48;
+            ring.widthMultiplier = .035f;
+            ring.sharedMaterial = new Material(cyan);
+            ring.startColor = new Color(.28f, 1f, .92f, .95f);
+            ring.endColor = new Color(1f, .65f, .18f, .95f);
+            for (int i = 0; i < ring.positionCount; i++)
+            {
+                float angle = i / (float)ring.positionCount * Mathf.PI * 2f;
+                ring.SetPosition(i, new Vector3(Mathf.Cos(angle) * .46f, Mathf.Sin(angle) * .46f, 0f));
+            }
+
+            Light glow = new GameObject("魂音拾取光").AddComponent<Light>();
+            glow.transform.SetParent(root.transform, false);
+            glow.type = LightType.Point;
+            glow.color = new Color(1f, .58f, .18f);
+            glow.range = 4.2f;
+            glow.intensity = 2.4f;
+            glow.shadows = LightShadows.None;
+
+            chapterOneSoulPickup = root.AddComponent<ChapterOneSoulEchoPickup>();
+            chapterOneSoulPickup.Configure(this, root.transform.position);
+        }
+
+        public void CollectChapterOneSoulEcho(ChapterOneSoulEchoPickup pickup)
+        {
+            if (chapterOneSoulCollected || pickup == null || pickup != chapterOneSoulPickup) return;
+            chapterOneSoulCollected = true;
+            Vector3 pickupPosition = pickup.transform.position;
+            chapterOneSoulPickup = null;
+            Destroy(pickup.gameObject);
+            pendingNode = null;
+            completedMemories = Mathf.Max(1, completedMemories);
+            if (soulOrbImages.Count > 0) soulOrbImages[0].color = new Color(1f, .58f, .16f, 1f);
+            health = Mathf.Min(5, health + 2);
+            UpdateHealth();
+            if (soulCountText != null) soulCountText.text = "收集魂音：1 / 3";
+            if (storyProgressText != null) storyProgressText.text = "主线 04 / 04  ·  魂音归位";
+            if (objectiveText != null) objectiveText.text = "魂音已收集，回响力恢复 2 点";
+            respawnPoint = playerTransform.position + Vector3.up * .3f;
+            BurstSoulParticles(pickupPosition);
+            audioSource.PlayOneShot(successTone, 1f);
             player?.TriggerVictory();
+            ShowToast("收 集 魂 音：1 / 3  ·  回 响 力 +2", new Color(1f, .76f, .24f));
             complete = true;
             ShowDialogue(new[]
             {
-                "系统｜溪流声纹恢复。水滴、竹叶与石桥回声重新同步。",
+                "系统｜收集魂音：1 / 3。回响力恢复 2 点。",
                 "老村长｜多年没听见的泉声，终于又回来了。",
                 "林默｜声音不是一串数据。它记得这里的人怎样生活。"
             }, ShowEnding);
@@ -3638,6 +6978,15 @@ namespace MeixiEcho
 
         private RhythmActionType? DetectRhythmAction(Keyboard keyboard)
         {
+            // J/K are combat verbs, not exploration shortcuts. Keep the legacy
+            // rhythm-input path behind the same authoritative chapter-one gate as
+            // MeixiThirdPersonPlayer so no pre-battle press can charge, animate or
+            // leak into a later encounter when a rhythm panel is still initialising.
+            if (keyboard == null || !ChapterOneCombatActive)
+            {
+                heavyCharging = false;
+                return null;
+            }
             Mouse mouse = Mouse.current;
             bool lightDown = keyboard.jKey.wasPressedThisFrame || (mouse != null && mouse.leftButton.wasPressedThisFrame);
             bool lightHeld = keyboard.jKey.isPressed || (mouse != null && mouse.leftButton.isPressed);
@@ -3873,16 +7222,19 @@ namespace MeixiEcho
         public void BeginFinalStrike(CombatBeatAction action, Vector3 targetPosition)
         {
             if (finishingStrike || !chapterOneCombatActive) return;
-            StartCoroutine(FinalStrikeSequence(action, targetPosition));
+            finalStrikeRoutine = StartCoroutine(FinalStrikeSequence(action, targetPosition, gameplaySessionRevision));
         }
 
-        private IEnumerator FinalStrikeSequence(CombatBeatAction action, Vector3 targetPosition)
+        private IEnumerator FinalStrikeSequence(CombatBeatAction action, Vector3 targetPosition, int sessionRevision)
         {
             finishingStrike = true;
-            cinematicInputLockedUntil = Time.unscaledTime + 2.60f;
+            cinematicInputLockedUntil = Time.unscaledTime + 3.20f;
             combatBeatPending = false;
+            meleeCounterThreatId = -1;
+            meleeCounterUntilDsp = 0d;
             MeleeForbiddenRing3D.ClearAll(false);
             TrackingAttackTelegraph3D.ClearAll();
+            EnemyMusicAttackVfx3D.ClearAll();
             if (combatActionKey != null) combatActionKey.text = "终";
             if (combatActionName != null)
             {
@@ -3893,16 +7245,35 @@ namespace MeixiEcho
             rhythmJudge.color = new Color(1f, 0.82f, 0.34f);
             player?.TriggerFinalStrike(action);
             orbitCamera?.BeginFinisherFocus(creekSpirit != null ? creekSpirit.transform : null);
-            FinisherCinematicOverlay3D.Begin(2.12f);
+            FinisherCinematicOverlay3D.Begin(2.15f);
             PlayerCombatFlourish3D.CreateFinisherCharge(PlayerPosition, targetPosition, action);
 
             float previousTimeScale = Time.timeScale;
             float previousPitch = musicSource != null ? musicSource.pitch : 1f;
-            Time.timeScale = 0.20f;
-            if (musicSource != null) musicSource.pitch = previousPitch * 0.58f;
-            yield return new WaitForSecondsRealtime(0.28f);
+            finalStrikeRestoreTimeScale = previousTimeScale;
+            finalStrikeRestorePitch = previousPitch;
+            Time.timeScale = 0.38f;
+            if (musicSource != null) musicSource.pitch = previousPitch * 0.68f;
+
+            // Move by actual distance instead of teleporting or rotating through a
+            // preset cut. The root faces one attack axis for the entire approach.
+            float approachDeadline = Time.unscaledTime + .92f;
+            while (Time.unscaledTime < approachDeadline && creekSpirit != null)
+            {
+                if (sessionRevision != gameplaySessionRevision) yield break;
+                targetPosition = creekSpirit.transform.position;
+                float remaining = player != null
+                    ? player.AdvanceFinalStrikeTowards(targetPosition, 1.58f, 6.2f)
+                    : Vector3.Distance(PlayerPosition, targetPosition);
+                if (remaining <= 1.62f) break;
+                yield return null;
+            }
+            player?.LockFinalStrikeFacing(targetPosition);
+            yield return new WaitForSecondsRealtime(.06f);
+            if (sessionRevision != gameplaySessionRevision) yield break;
 
             player?.TriggerFinalStrikeImpact(action);
+            player?.LockFinalStrikeFacing(targetPosition);
             orbitCamera?.TriggerFinisherCut(0);
             Color impactColor = action == CombatBeatAction.AttackTwo
                 ? new Color(0.16f, 1f, 0.92f)
@@ -3910,28 +7281,40 @@ namespace MeixiEcho
             FinisherCinematicOverlay3D.Impact(impactColor);
             PlayerCombatFlourish3D.CreateFinisherImpact(PlayerPosition, targetPosition, action);
             SpawnGroundSigil(new Vector3(targetPosition.x, 0.06f, targetPosition.z), 5.8f, 1.10f, Color.white);
-            SpawnBeatShardBurst(targetPosition + Vector3.up, 16, 4.6f, Color.white);
+            SpawnBeatShardBurst(targetPosition + Vector3.up, 28, 5.6f, Color.white);
             audioSource.PlayOneShot(successTone, 1f);
-            Time.timeScale = 0.035f;
+            Time.timeScale = 0.10f;
             if (rhythmFinisherValidation && captureMode && !captureDone)
                 captureAt = Time.unscaledTime + 0.10f;
-            Debug.Log($"[MeixiRhythm] Final strike close-up impact action={action}");
-            yield return new WaitForSecondsRealtime(0.12f);
+            Debug.Log($"[MeixiRhythm] Final strike collision reached action={action}");
+            yield return new WaitForSecondsRealtime(0.13f);
+            if (sessionRevision != gameplaySessionRevision) yield break;
 
-            Time.timeScale = 0.28f;
+            Vector3 explosionPosition = creekSpirit != null
+                ? creekSpirit.ExplodeForFinalStrike()
+                : targetPosition;
+            SpawnFinalEnemyExplosion(explosionPosition, impactColor);
+            Time.timeScale = 0.24f;
             orbitCamera?.TriggerFinisherCut(1);
-            SpawnGeneratedSlash(targetPosition + Vector3.up * 1.05f, 7.2f, -36f, 0.92f, new Color(1f, 0.58f, 0.22f, 0.90f));
-            yield return new WaitForSecondsRealtime(0.46f);
-
-            cinematicInputLockedUntil = Time.unscaledTime + 1.15f;
-            Time.timeScale = 0f;
-            if (musicSource != null) musicSource.pitch = previousPitch * 0.18f;
-            yield return new WaitForSecondsRealtime(1.15f);
+            SpawnGeneratedSlash(explosionPosition + Vector3.up * 1.05f, 7.2f, -36f, 0.92f,
+                new Color(1f, 0.58f, 0.22f, 0.90f));
+            yield return new WaitForSecondsRealtime(0.36f);
+            if (sessionRevision != gameplaySessionRevision) yield break;
 
             Time.timeScale = previousTimeScale;
             if (musicSource != null) musicSource.pitch = previousPitch;
             player?.CompleteFinalStrikeAnimation();
-            creekSpirit?.CompleteFinalStrike();
+            ChapterOneEnemyDefeated(explosionPosition);
+            finalStrikeRoutine = null;
+        }
+
+        private void SpawnFinalEnemyExplosion(Vector3 position, Color accent)
+        {
+            Vector3 centre = position + Vector3.up * 1.05f;
+            EnemyMusicImpact3D.Create(centre, Color.white, 7.2f, 1.05f, 64);
+            SpawnGroundSigil(new Vector3(position.x, .06f, position.z), 6.8f, 1.20f, accent);
+            SpawnBeatShardBurst(centre, 64, 7.4f, Color.white);
+            BurstSoulParticles(centre);
         }
 
         private static string ActionName(RhythmActionType action) => action switch
@@ -4006,7 +7389,7 @@ namespace MeixiEcho
             pendingNode = null;
             if (completedMemories < soulOrbImages.Count) soulOrbImages[completedMemories].color = new Color(1f, 0.58f, 0.16f, 1f);
             completedMemories++;
-            soulCountText.text = $"溪流魂音  {completedMemories} / 1";
+            soulCountText.text = $"收集魂音：{completedMemories} / 3";
             respawnPoint = playerTransform.position + Vector3.up * 0.3f;
             if (completedMemories >= 1)
             {
@@ -4019,13 +7402,20 @@ namespace MeixiEcho
             }
             else
             {
-                ShowToast($"魂 音 归 位    {completedMemories} / 1", new Color(0.38f, 1f, 0.70f));
+                ShowToast($"魂 音 归 位    {completedMemories} / 3", new Color(0.38f, 1f, 0.70f));
                 SetObjective(completedMemories);
             }
         }
 
         private void ShowEnding()
         {
+            if (sceneTransitionActive) return;
+            BeginScreenTransition("溪 声 归 来", PresentEnding, .42f, .14f, .72f);
+        }
+
+        private void PresentEnding()
+        {
+            if (!IsAutomatedPresentationRun()) MeixiLocalProgress.MarkChapterOneCompleted();
             complete = true;
             chapterOneCombatActive = false;
             rhythmPanel.SetActive(false);
@@ -4062,19 +7452,6 @@ namespace MeixiEcho
             const float beat = 0.6f;
             float phase = Time.time % beat;
             return phase < 0.14f || phase > beat - 0.14f;
-        }
-
-        public void SpawnFootstep(Vector3 position)
-        {
-            var mote = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            mote.name = "脚步音尘";
-            mote.transform.position = position + Vector3.up * 0.08f;
-            mote.transform.localScale = Vector3.one * 0.08f;
-            mote.GetComponent<Renderer>().material = new Material(cyan);
-            Destroy(mote.GetComponent<Collider>());
-            var fx = mote.AddComponent<PulseFx3D>();
-            fx.Lifetime = 0.28f;
-            fx.Growth = 3.5f;
         }
 
         public void SpawnDashTrail(Vector3 position, Vector3 direction)
@@ -4127,6 +7504,12 @@ namespace MeixiEcho
 
         public void DamagePlayer()
         {
+            if (defeatOpen) return;
+            if (CombatPhaseResting)
+            {
+                Debug.Log($"[MeixiDamage] Ignored during phase rest until={combatPhaseRestUntilDsp:F3}.");
+                return;
+            }
             if (chapterOneCombatActive && AudioSettings.dspTime < playerDamageImmuneUntilDsp)
             {
                 Debug.Log($"[MeixiDamage] Ignored delayed damage after dodge id={dodgedThreatId} " +
@@ -4136,18 +7519,95 @@ namespace MeixiEcho
             health--;
             Debug.Log($"[MeixiDamage] Applied health={health} threat={activeThreatId} type={currentThreatType}");
             UpdateHealth();
+            CombatDamageVignette3D.Flash();
             ShowToast("回 响 力 受 到 噪 音 侵 蚀", new Color(1f, 0.27f, 0.38f));
             if (health <= 0)
             {
-                health = 5;
-                RespawnPlayer();
+                health = 0;
                 UpdateHealth();
+                ShowDefeatPanel();
             }
         }
 
         private void UpdateHealth()
         {
-            healthText.text = "回响力  " + new string('◆', health) + new string('◇', 5 - health);
+            int clampedHealth = Mathf.Clamp(health, 0, 5);
+            int delta = clampedHealth - displayedHealth;
+            displayedHealth = clampedHealth;
+            if (healthText != null) healthText.text = $"回响力  {clampedHealth} / 5";
+            Color baseBarColor = clampedHealth <= 1
+                ? new Color(1f, .16f, .20f, .98f)
+                : clampedHealth <= 3 ? new Color(1f, .58f, .16f, .98f) : new Color(.18f, .92f, 1f, .98f);
+            for (int i = 0; i < healthBarSegments.Length; i++)
+            {
+                Image segment = healthBarSegments[i];
+                if (segment == null) continue;
+                segment.gameObject.SetActive(i < clampedHealth);
+                segment.color = baseBarColor;
+            }
+            if (delta != 0 && healthFxGroup != null)
+            {
+                if (healthFxRoutine != null) StopCoroutine(healthFxRoutine);
+                Debug.Log($"[MeixiHealthHud] delta={delta} health={clampedHealth}; pulse started.");
+                healthFxRoutine = StartCoroutine(PlayHealthHudFx(delta));
+            }
+        }
+
+        private IEnumerator PlayHealthHudFx(int delta)
+        {
+            bool restored = delta > 0;
+            Color pulseColor = restored ? new Color(.18f, 1f, .58f, .42f) : new Color(1f, .10f, .16f, .48f);
+            Color baseBarColor = displayedHealth <= 1
+                ? new Color(1f, .16f, .20f, .98f)
+                : displayedHealth <= 3 ? new Color(1f, .58f, .16f, .98f) : new Color(.18f, .92f, 1f, .98f);
+            Color baseLabelColor = new(1f, .58f, .34f);
+            Color flashBarColor = restored ? new Color(.20f, 1f, .52f, 1f) : new Color(1f, .08f, .12f, 1f);
+            if (healthBarGlow != null) healthBarGlow.color = pulseColor;
+            if (healthDeltaText != null)
+            {
+                healthDeltaText.text = restored ? $"+{delta} 回响" : $"{delta} 回响";
+                healthDeltaText.color = restored ? new Color(.38f, 1f, .68f) : new Color(1f, .30f, .30f);
+                healthDeltaText.gameObject.SetActive(true);
+                healthDeltaText.transform.SetAsLastSibling();
+            }
+            if (healthFxGroup != null) healthFxGroup.alpha = 1f;
+
+            float start = Time.unscaledTime;
+            const float duration = 1.05f;
+            while (Time.unscaledTime - start < duration)
+            {
+                float age = Time.unscaledTime - start;
+                float enter = Mathf.Clamp01(age / .10f);
+                float exit = 1f - Mathf.Clamp01((age - .62f) / .43f);
+                float pulse = 1f + Mathf.Sin(age * 30f) * .024f * exit;
+                float flash = (.40f + Mathf.Sin(age * 31f) * .30f) * exit;
+                if (healthFxGroup != null) healthFxGroup.alpha = Mathf.Min(enter, exit);
+                if (healthCardRect != null) healthCardRect.localScale = Vector3.one * pulse;
+                for (int i = 0; i < healthBarSegments.Length; i++)
+                    if (healthBarSegments[i] != null && healthBarSegments[i].gameObject.activeSelf)
+                        healthBarSegments[i].color = Color.Lerp(baseBarColor, flashBarColor, flash);
+                if (healthText != null) healthText.color = Color.Lerp(baseLabelColor, flashBarColor, flash * .72f);
+                if (healthDeltaText != null)
+                {
+                    Color deltaColor = restored ? new Color(.38f, 1f, .68f) : new Color(1f, .30f, .30f);
+                    deltaColor.a = Mathf.Min(enter, exit);
+                    healthDeltaText.color = deltaColor;
+                    healthDeltaText.rectTransform.localScale = Vector3.one * (1f + enter * exit * .10f);
+                }
+                yield return null;
+            }
+            if (healthFxGroup != null) healthFxGroup.alpha = 0f;
+            if (healthCardRect != null) healthCardRect.localScale = Vector3.one;
+            for (int i = 0; i < healthBarSegments.Length; i++)
+                if (healthBarSegments[i] != null && healthBarSegments[i].gameObject.activeSelf)
+                    healthBarSegments[i].color = baseBarColor;
+            if (healthText != null) healthText.color = baseLabelColor;
+            if (healthDeltaText != null)
+            {
+                healthDeltaText.rectTransform.localScale = Vector3.one;
+                healthDeltaText.gameObject.SetActive(false);
+            }
+            healthFxRoutine = null;
         }
 
         public void RespawnPlayer()
@@ -4166,11 +7626,39 @@ namespace MeixiEcho
 
         public void ShowToast(string message, Color color)
         {
-            if (toastText == null) return;
+            if (toastText == null || toastPanel == null) return;
             toastText.text = message;
-            toastText.color = color;
-            toastText.gameObject.SetActive(true);
-            toastUntil = Time.unscaledTime + 1.45f;
+            toastText.color = Color.Lerp(Color.white, color, 0.38f);
+            if (toastBannerFx != null) toastBannerFx.Play(color);
+            else toastPanel.SetActive(true);
+            toastPanel.transform.SetAsLastSibling();
+            toastUntil = Time.unscaledTime + 1.85f;
+        }
+    }
+
+    public sealed class ChapterOneSoulEchoPickup : MonoBehaviour
+    {
+        private MeixiGame3D game;
+        private Vector3 basePosition;
+        private bool collected;
+
+        public void Configure(MeixiGame3D owner, Vector3 position)
+        {
+            game = owner;
+            basePosition = position;
+        }
+
+        private void Update()
+        {
+            if (game == null || collected) return;
+            float wave = Mathf.Sin(Time.unscaledTime * 2.4f) * .12f;
+            transform.position = basePosition + Vector3.up * wave;
+            transform.Rotate(0f, 58f * Time.unscaledDeltaTime, 18f * Time.unscaledDeltaTime, Space.Self);
+            Vector3 delta = game.PlayerPosition - transform.position;
+            delta.y *= .45f;
+            if (delta.sqrMagnitude > 1.55f * 1.55f) return;
+            collected = true;
+            game.CollectChapterOneSoulEcho(this);
         }
     }
 }

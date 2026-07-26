@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -101,9 +102,22 @@ namespace MeixiEcho
     {
         private const string AnimatorControllerResource = "Animations/LinMoCombat";
         private const string CharacterModelResource = "Models/Characters/LinMo";
-        private const int MaxHealth = 36;
-        private const double AttackResolutionDelay = 0.10d;
-        private static readonly int[] AttackPattern = { 2, 0, 1, 2, 0, 2, 1, 0, 1, 2, 2, 0 };
+        // Longer phase pools keep the full analyzed BGM grid in play without
+        // inflating per-hit numbers or changing the authoritative damage path.
+        public const int PhaseOneHealth = 72;
+        public const int PhaseTwoHealth = 88;
+        public const int PhaseThreeHealth = 104;
+        private const int MaxHealth = PhaseOneHealth + PhaseTwoHealth + PhaseThreeHealth;
+        private const int PhaseThreeThreshold = PhaseThreeHealth;
+        private const int PhaseTwoThreshold = PhaseTwoHealth + PhaseThreeHealth;
+        // Resolve only after the complete player input window has elapsed. This
+        // prevents actor Update order or a single slow frame from turning a valid
+        // late-edge input into damage before MeixiGame3D can consume it.
+        private const double AttackResolutionDelay = 0.285d;
+        private const double PhaseRestSeconds = 1.80d;
+        // Type 3 is the authored long-range musical dash. It replaces a portion
+        // of the old projectile-only pressure and is always answered with SPACE.
+        private static readonly int[] AttackPattern = { 3, 0, 2, 1, 3, 0, 2, 3, 1, 2, 0, 3, 2, 1 };
         private readonly int speedHash = Animator.StringToHash("Speed");
         private readonly int attackHash = Animator.StringToHash("Light");
         private readonly int castHash = Animator.StringToHash("Heavy");
@@ -125,6 +139,7 @@ namespace MeixiEcho
         [SerializeField] private Material gold;
         private Vector3 arenaCenter;
         private double nextAttackBeat;
+        private double currentAttackResolveBeat;
         private float telegraphLead;
         private bool active;
         private bool telegraphed;
@@ -144,9 +159,17 @@ namespace MeixiEcho
         private Vector3 movementSmoothVelocity;
         private Vector3 pendingAttackPoint;
         private bool attackAimLocked;
+        private double phaseRestUntilDsp;
+        private bool musicalDashActive;
 
         public int Health => health;
         public int HealthMaximum => MaxHealth;
+        public int BattlePhase => battlePhase;
+        public int PhaseHealthMaximum => battlePhase == 1 ? PhaseOneHealth : battlePhase == 2 ? PhaseTwoHealth : PhaseThreeHealth;
+        public int PhaseHealthRemaining => battlePhase == 1
+            ? Mathf.Max(0, health - PhaseTwoThreshold)
+            : battlePhase == 2 ? Mathf.Max(0, health - PhaseThreeThreshold) : Mathf.Max(0, health);
+        public float PhaseHealthNormalized => Mathf.Clamp01(PhaseHealthRemaining / (float)Mathf.Max(1, PhaseHealthMaximum));
         public bool CounterWindowOpen => Time.time <= counterUntil;
 
         public void Configure(MeixiGame3D owner, Transform target, CharacterController characterController, Animator modelAnimator, Renderer[] modelRenderers, Material cyanMaterial, Material goldMaterial)
@@ -168,7 +191,19 @@ namespace MeixiEcho
             game = owner;
             player = target;
             controller = controller != null ? controller : GetComponent<CharacterController>();
-            animator = animator != null ? animator : GetComponentInChildren<Animator>();
+            Animator[] animatorCandidates = GetComponentsInChildren<Animator>(true);
+            Animator preferredAnimator = null;
+            foreach (Animator candidate in animatorCandidates)
+            {
+                if (candidate == null) continue;
+                if (candidate.transform.name == "写实角色模型")
+                {
+                    preferredAnimator = candidate;
+                    break;
+                }
+                if (preferredAnimator == null && candidate.gameObject.activeInHierarchy) preferredAnimator = candidate;
+            }
+            animator = preferredAnimator != null ? preferredAnimator : animator;
             proceduralPose = animator != null ? animator.GetComponent<ProceduralHumanoidFallback>() : null;
             renderers = renderers != null && renderers.Length > 0 ? renderers : GetComponentsInChildren<Renderer>(true);
             arenaCenter = transform.position;
@@ -182,6 +217,7 @@ namespace MeixiEcho
             // and explicitly restore renderers so a saved editor visibility state can
             // never produce an invisible combat encounter.
             controller = controller != null ? controller : GetComponent<CharacterController>();
+            if (controller != null) controller.enabled = true;
             animator = animator != null ? animator : GetComponentInChildren<Animator>(true);
             renderers = GetComponentsInChildren<Renderer>(true);
             foreach (Renderer modelRenderer in renderers)
@@ -216,11 +252,13 @@ namespace MeixiEcho
             patternIndex = 0;
             counterUntil = -1f;
             evadeCooldown = 0f;
-            double beatLength = 60d / battleBpm;
-            telegraphLead = (float)(beatLength * 0.88d);
-            nextAttackBeat = beatStart + beatLength * 4d;
+            double firstCue = game != null ? game.GetNextAnalyzedCombatBeat(beatStart + 1.55d, battlePhase) : beatStart + 2.5d;
+            nextAttackBeat = firstCue;
+            currentAttackResolveBeat = firstCue;
+            telegraphLead = 0.54f;
             telegraphed = false;
             resolved = false;
+            phaseRestUntilDsp = 0d;
             SetAnimatorFloat(speedHash, 0f);
             if (!animatorReady) proceduralPose?.SetLocomotion(0f, 0f);
             movementVelocity = Vector3.zero;
@@ -230,11 +268,24 @@ namespace MeixiEcho
             Debug.Log($"[MeixiRhythm] Battle start dsp={AudioSettings.dspTime:F3}, firstBeat={nextAttackBeat:F3}");
         }
 
+        public void ShiftCombatTimeline(double delta)
+        {
+            if (delta <= 0d || !active) return;
+            nextAttackBeat += delta;
+            currentAttackResolveBeat += delta;
+            if (phaseRestUntilDsp > 0d) phaseRestUntilDsp += delta;
+            // A telegraph already visible before pausing remains tied to the same
+            // authored beat after resuming instead of resolving immediately.
+            Debug.Log($"[MeixiPause] Enemy rhythm timeline shifted by {delta:F3}s.");
+        }
+
         public void PrepareFinisherValidation(double beatStart)
         {
             health = 2;
+            battlePhase = 3;
             patternIndex = 2; // AttackPattern[2] = K 重击，可直接触发终结一击。
-            nextAttackBeat = beatStart + 1.05d;
+            nextAttackBeat = game != null ? game.GetNextAnalyzedCombatBeat(beatStart + 1.05d, battlePhase) : beatStart + 1.05d;
+            currentAttackResolveBeat = nextAttackBeat;
             telegraphed = false;
             resolved = false;
         }
@@ -242,18 +293,51 @@ namespace MeixiEcho
         public void PrepareAttackValidation(double beatStart)
         {
             patternIndex = 1; // AttackPattern[1] = J 攻击一。
-            nextAttackBeat = beatStart + 1.45d;
+            nextAttackBeat = game != null ? game.GetNextAnalyzedCombatBeat(beatStart + 1.45d, battlePhase) : beatStart + 1.45d;
+            currentAttackResolveBeat = nextAttackBeat;
             telegraphed = false;
             resolved = false;
         }
 
         public void PrepareSpecificAttackValidation(int attackType, double beatStart)
         {
-            int found = System.Array.IndexOf(AttackPattern, Mathf.Clamp(attackType, 0, 2));
+            int found = System.Array.IndexOf(AttackPattern, Mathf.Clamp(attackType, 0, 3));
             patternIndex = found >= 0 ? found : 0;
-            nextAttackBeat = beatStart + 1.45d;
+            nextAttackBeat = game != null ? game.GetNextAnalyzedCombatBeat(beatStart + 1.45d, battlePhase) : beatStart + 1.45d;
+            currentAttackResolveBeat = nextAttackBeat;
             telegraphed = false;
             resolved = false;
+        }
+
+        public void PreparePhaseValidation(int phase)
+        {
+            battlePhase = Mathf.Clamp(phase, 1, 3);
+            health = battlePhase == 1 ? MaxHealth : battlePhase == 2 ? PhaseTwoThreshold : PhaseThreeThreshold;
+            telegraphed = false;
+            resolved = false;
+            phaseRestUntilDsp = AudioSettings.dspTime + PhaseRestSeconds;
+            telegraphLead = Mathf.Max(.50f, telegraphLead);
+            nextAttackBeat = game != null
+                ? game.GetNextAnalyzedCombatBeat(phaseRestUntilDsp + telegraphLead + .18d, battlePhase)
+                : phaseRestUntilDsp + telegraphLead + .40d;
+            currentAttackResolveBeat = nextAttackBeat;
+            game?.BeginCombatPhaseTransition(battlePhase, phaseRestUntilDsp);
+        }
+
+        public void ResumeAfterPhaseGuide(double restUntilDsp)
+        {
+            phaseRestUntilDsp = System.Math.Max(AudioSettings.dspTime + .35d, restUntilDsp);
+            telegraphLead = Mathf.Max(.50f, telegraphLead);
+            nextAttackBeat = game != null
+                ? game.GetNextAnalyzedCombatBeat(phaseRestUntilDsp + telegraphLead + .18d, battlePhase)
+                : phaseRestUntilDsp + telegraphLead + .40d;
+            currentAttackResolveBeat = nextAttackBeat;
+            telegraphed = false;
+            resolved = false;
+            attackAimLocked = false;
+            movementVelocity = Vector3.zero;
+            movementSmoothVelocity = Vector3.zero;
+            Debug.Log($"[MeixiPhaseGuide] Enemy rescheduled after guide; nextBeat={nextAttackBeat:F3}.");
         }
 
         protected virtual void Update()
@@ -280,9 +364,23 @@ namespace MeixiEcho
             double now = AudioSettings.dspTime;
             UpdateAttackAim(now);
 
+            if (now < phaseRestUntilDsp)
+            {
+                movementVelocity = Vector3.SmoothDamp(movementVelocity, Vector3.zero,
+                    ref movementSmoothVelocity, .06f, Mathf.Infinity, Time.deltaTime);
+                SetAnimatorFloat(speedHash, 0f);
+                if (!animatorReady) proceduralPose?.SetLocomotion(0f, 0f);
+                return;
+            }
+
             if (Time.time < staggerUntil)
             {
                 SetAnimatorFloat(speedHash, 0f);
+                return;
+            }
+            if (musicalDashActive)
+            {
+                SetAnimatorFloat(speedHash, .82f);
                 return;
             }
 
@@ -293,24 +391,23 @@ namespace MeixiEcho
             }
             // Resolve just after the musical beat so a Space press sampled later in the same rendered
             // frame can still invalidate the attack. This removes Update-order dependent hits.
-            if (!resolved && now >= nextAttackBeat + AttackResolutionDelay)
+            if (!resolved && now >= currentAttackResolveBeat + AttackResolutionDelay)
             {
                 resolved = true;
                 ExecuteAttack();
             }
-            if (now >= nextAttackBeat + 0.48d)
+            if (now >= currentAttackResolveBeat + 0.42d)
             {
                 patternIndex++;
-                double intervalBeats = battlePhase == 1 ? 2d : battlePhase == 2 ? 1.72d : 1.42d;
-                double musicalNextBeat = nextAttackBeat + 60d / battleBpm * intervalBeats;
-                // Never catch up an overdue attack in one frame. On a slow/loading frame the next
-                // threat is moved forward so the player always receives the complete telegraph.
-                double earliestFairBeat = now + telegraphLead + 0.08d;
-                nextAttackBeat = System.Math.Max(musicalNextBeat, earliestFairBeat);
+                // Every new threat is selected from the analyzed BGM grid. The phase only
+                // changes how many grid beats we leave between attacks.
+                double earliestFairBeat = now + telegraphLead + 0.10d;
+                nextAttackBeat = game.GetNextAnalyzedCombatBeat(earliestFairBeat, battlePhase);
                 telegraphed = false;
                 resolved = false;
                 attackAimLocked = false;
-                Debug.Log($"[MeixiRhythm] Next fair threat beat={nextAttackBeat:F3} now={now:F3}");
+                currentAttackResolveBeat = nextAttackBeat;
+                Debug.Log($"[MeixiBeat] Next analyzed threat beat={nextAttackBeat:F3} phase={battlePhase} now={now:F3}");
             }
 
             if (!telegraphed)
@@ -348,15 +445,18 @@ namespace MeixiEcho
             {
                 0 => new Color(1f, 0.12f, 0.24f, 0.96f),
                 1 => new Color(0.08f, 0.88f, 1f, 0.96f),
+                3 => new Color(1f, .42f, .10f, .98f),
                 _ => new Color(0.82f, 0.18f, 1f, 0.96f)
             };
-            float castRadius = attackType == 0 ? 1.32f : attackType == 1 ? 1.50f : 1.20f;
-            float visibleLead = telegraphLead + (float)AttackResolutionDelay;
+            float castRadius = attackType == 0 ? 1.32f : attackType == 1 ? 1.50f : attackType == 3 ? 1.78f : 1.20f;
+            game.PrepareCombatBeat(attackType, nextAttackBeat, patternIndex);
+            currentAttackResolveBeat = game.CurrentCombatThreatResolveDsp > 0d
+                ? game.CurrentCombatThreatResolveDsp : nextAttackBeat;
+            float visibleLead = Mathf.Max(0.48f, (float)(currentAttackResolveBeat - AudioSettings.dspTime + AttackResolutionDelay));
             RhythmTelegraph3D.Create(transform, castRadius, visibleLead, color, attackType == 1);
             TrackingAttackTelegraph3D.Create(player, transform, attackType, visibleLead);
             EnemyMusicAttackVfx3D.Launch(game, (CreekRhythmEnemy3D)this, player, attackType,
-                transform.position + transform.forward * 0.55f, nextAttackBeat + AttackResolutionDelay);
-            game.PrepareCombatBeat(attackType, nextAttackBeat);
+                transform.position + transform.forward * 0.55f, currentAttackResolveBeat + AttackResolutionDelay);
         }
 
         private void ExecuteAttack()
@@ -367,6 +467,13 @@ namespace MeixiEcho
             Vector3 direction = toPlayer.sqrMagnitude > 0.01f ? toPlayer.normalized : transform.forward;
             transform.rotation = Quaternion.LookRotation(direction, Vector3.up);
             int attackType = AttackPattern[patternIndex % AttackPattern.Length];
+            if (attackType == 3)
+            {
+                SetAnimatorTrigger(dodgeHash);
+                if (!animatorReady) proceduralPose?.TriggerDodge();
+                StartCoroutine(PerformMusicalDash(pendingAttackPoint));
+                return;
+            }
             if (attackType == 2)
             {
                 SetAnimatorTrigger(castHash);
@@ -383,6 +490,41 @@ namespace MeixiEcho
             game.ResolveEnemyAttack(attackType, transform.position + Vector3.up * 0.8f);
         }
 
+        private IEnumerator PerformMusicalDash(Vector3 lockedPoint)
+        {
+            musicalDashActive = true;
+            Vector3 start = transform.position;
+            Vector3 direction = Vector3.ProjectOnPlane(lockedPoint - start, Vector3.up);
+            if (direction.sqrMagnitude < .01f) direction = transform.forward;
+            direction.Normalize();
+            float requestedDistance = Mathf.Clamp(Vector3.ProjectOnPlane(lockedPoint - start, Vector3.up).magnitude + 1.15f,
+                6.4f, 10.8f);
+            Vector3 target = start + direction * requestedDistance;
+            Vector3 arenaOffset = Vector3.ProjectOnPlane(target - arenaCenter, Vector3.up);
+            if (arenaOffset.magnitude > 5.05f) target = arenaCenter + arenaOffset.normalized * 5.05f;
+            target.y = start.y;
+            const float duration = .30f;
+            EnemyDashNoteTrail3D.Create(transform, start, target, duration);
+            float elapsed = 0f;
+            while (elapsed < duration && controller != null && controller.enabled)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                Vector3 desired = Vector3.Lerp(start, target, eased);
+                controller.Move(desired - transform.position);
+                transform.forward = direction;
+                yield return null;
+            }
+            musicalDashActive = false;
+            movementVelocity = Vector3.zero;
+            movementSmoothVelocity = Vector3.zero;
+            SetAnimatorFloat(speedHash, 0f);
+            EnemyMusicImpact3D.Create(transform.position + Vector3.up * .15f,
+                new Color(1f, .42f, .10f), 4.6f, .64f, 20);
+            game.ResolveEnemyAttack(3, start + direction * .8f + Vector3.up * .8f);
+        }
+
         private void UpdateAttackAim(double now)
         {
             if (!telegraphed || resolved || player == null || attackAimLocked) return;
@@ -395,6 +537,59 @@ namespace MeixiEcho
             if (direction.sqrMagnitude > 0.01f)
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(direction, Vector3.up),
                     1f - Mathf.Exp(-18f * Time.deltaTime));
+        }
+
+        public void RepositionAfterPlayerMistake(Vector3 playerPosition)
+        {
+            if (!active || dying) return;
+            Vector3 origin = transform.position;
+            Vector3 away = Vector3.ProjectOnPlane(origin - playerPosition, Vector3.up);
+            if (away.sqrMagnitude < 0.01f) away = transform.right;
+            float radius = battlePhase == 1 ? 4.25f : battlePhase == 2 ? 4.75f : 5.15f;
+            float sign = patternIndex % 2 == 0 ? 1f : -1f;
+            float[] angles = { 82f * sign, -82f * sign, 132f * sign, -132f * sign, 180f };
+            Vector3 candidate = origin;
+            bool foundSafePoint = false;
+            for (int i = 0; i < angles.Length; i++)
+            {
+                Vector3 direction = Quaternion.AngleAxis(angles[i], Vector3.up) * away.normalized;
+                Vector3 test = playerPosition + direction * radius;
+                test.x = Mathf.Clamp(test.x, arenaCenter.x - 7.2f, arenaCenter.x + 7.2f);
+                test.z = Mathf.Clamp(test.z, arenaCenter.z - 7.2f, arenaCenter.z + 7.2f);
+                if (!Physics.Raycast(test + Vector3.up * 7f, Vector3.down, out RaycastHit groundHit, 14f,
+                        ~0, QueryTriggerInteraction.Ignore)) continue;
+                test.y = groundHit.point.y + 0.05f;
+                if (groundHit.normal.y < 0.68f || Mathf.Abs(test.y - playerPosition.y) > 1.25f) continue;
+                if (Physics.CheckCapsule(test + Vector3.up * 0.38f, test + Vector3.up * 1.58f, 0.30f,
+                        ~0, QueryTriggerInteraction.Ignore)) continue;
+                candidate = test;
+                foundSafePoint = true;
+                break;
+            }
+            if (!foundSafePoint)
+            {
+                Vector3 fallback = Vector3.ProjectOnPlane(arenaCenter - playerPosition, Vector3.up);
+                if (fallback.sqrMagnitude < 0.01f) fallback = away;
+                candidate = playerPosition + fallback.normalized * 4.2f;
+                candidate.y = origin.y;
+            }
+
+            bool wasEnabled = controller != null && controller.enabled;
+            if (controller != null) controller.enabled = false;
+            transform.position = candidate;
+            if (controller != null) controller.enabled = wasEnabled;
+            movementVelocity = Vector3.zero;
+            movementSmoothVelocity = Vector3.zero;
+            pendingAttackPoint = playerPosition;
+            attackAimLocked = false;
+            staggerUntil = Mathf.Max(staggerUntil, Time.time + 0.16f);
+            SetAnimatorTrigger(dodgeHash);
+            if (!animatorReady) proceduralPose?.TriggerDodge();
+            FacePlayer(1f);
+            PlayerCombatFlourish3D.CreateBlink(origin, candidate, true);
+            EnemyMusicImpact3D.Create(origin + Vector3.up * 0.35f, new Color(0.78f, 0.18f, 1f), 2.2f, 0.34f, 10);
+            EnemyMusicImpact3D.Create(candidate + Vector3.up * 0.35f, new Color(0.18f, 0.92f, 1f), 2.8f, 0.42f, 14);
+            Debug.Log($"[MeixiEnemy] Repositioned after player mistake from {origin} to {candidate}");
         }
 
         public void ResolveRhythmResponse(CombatBeatAction action, bool perfect)
@@ -411,7 +606,7 @@ namespace MeixiEcho
             ApplySpatialDamage(action == CombatBeatAction.AttackTwo ? 3 : 5, action, perfect);
         }
 
-        public bool TryReceiveMeleeHit(Vector3 origin, Vector3 forward, bool onBeat)
+        public bool TryReceiveMeleeHit(Vector3 origin, Vector3 forward, bool onBeat, int comboStep, bool counterWindow)
         {
             if (!active || dying || Time.time < staggerUntil) return false;
             Vector3 delta = transform.position + Vector3.up * 0.85f - origin;
@@ -420,7 +615,14 @@ namespace MeixiEcho
             // A clear forward cone keeps the visual slash and damage result aligned.
             if (flatDelta.magnitude > 2.25f) return false;
             if (flatDelta.sqrMagnitude > 0.01f && Vector3.Dot(forward.normalized, flatDelta.normalized) < 0.12f) return false;
-            return ApplySpatialDamage(onBeat ? 5 : 4, CombatBeatAction.AttackOne, onBeat);
+            int damage = comboStep switch
+            {
+                1 => onBeat ? 6 : 5,
+                2 => onBeat ? 8 : 6,
+                _ => onBeat ? 5 : 4
+            };
+            if (counterWindow) damage += 1;
+            return ApplySpatialDamage(damage, CombatBeatAction.AttackOne, onBeat || counterWindow);
         }
 
         public bool TryReceiveRangedHit(bool onBeat)
@@ -429,23 +631,55 @@ namespace MeixiEcho
             return ApplySpatialDamage(onBeat ? 3 : 2, CombatBeatAction.AttackTwo, onBeat);
         }
 
-        private bool ApplySpatialDamage(int damage, CombatBeatAction action, bool onBeat)
+        public bool TryReceiveRhythmActionHit(CombatBeatAction action, CombatInputKey key, int stepIndex)
+        {
+            if (!active || dying || Time.time < staggerUntil) return false;
+            int damage = action switch
+            {
+                CombatBeatAction.AttackOne => 9,
+                CombatBeatAction.AttackTwo => 9,
+                CombatBeatAction.JKWave => 14,
+                CombatBeatAction.JDodgeStrike => 16,
+                CombatBeatAction.KDodgeTripleArc => 14,
+                CombatBeatAction.TripleJ => 8,
+                CombatBeatAction.JKRiff => 8,
+                CombatBeatAction.KJKRiff => 8,
+                _ => 0
+            };
+            if (damage <= 0) return true;
+            bool rapidSequence = action == CombatBeatAction.TripleJ || action == CombatBeatAction.JKRiff || action == CombatBeatAction.KJKRiff;
+            return ApplySpatialDamage(damage, key == CombatInputKey.K ? CombatBeatAction.AttackTwo : CombatBeatAction.AttackOne,
+                true, rapidSequence ? 0.02f : -1f);
+        }
+
+        private bool ApplySpatialDamage(int damage, CombatBeatAction action, bool onBeat, float staggerOverride = -1f)
         {
             if (!active || dying || Time.time < staggerUntil) return false;
             health = Mathf.Max(0, health - Mathf.Max(1, damage));
-            staggerUntil = Time.time + (action == CombatBeatAction.AttackOne ? 0.30f : 0.24f);
+            float staggerDuration = staggerOverride >= 0f ? staggerOverride : action == CombatBeatAction.AttackOne ? 0.30f : 0.24f;
+            staggerUntil = Time.time + staggerDuration;
             counterUntil = -1f;
             SetAnimatorTrigger(hitHash);
             if (!animatorReady) proceduralPose?.TriggerHit();
             FlashHit(onBeat);
-            game.ReportPlayerCombatHit(damage, onBeat, health, MaxHealth);
+            game.ReportPlayerCombatHit(damage, onBeat, PhaseHealthRemaining, PhaseHealthMaximum);
 
-            int nextPhase = health <= 12 ? 3 : health <= 24 ? 2 : 1;
+            int nextPhase = health <= PhaseThreeThreshold ? 3 : health <= PhaseTwoThreshold ? 2 : 1;
             if (nextPhase != battlePhase && health > 0)
             {
                 battlePhase = nextPhase;
-                telegraphLead = Mathf.Max(0.44f, telegraphLead - 0.08f);
-                game.ReportCombatPhase(battlePhase);
+                telegraphLead = Mathf.Max(0.50f, telegraphLead - 0.04f);
+                phaseRestUntilDsp = AudioSettings.dspTime + PhaseRestSeconds;
+                patternIndex++;
+                nextAttackBeat = game.GetNextAnalyzedCombatBeat(
+                    phaseRestUntilDsp + telegraphLead + .18d, battlePhase);
+                currentAttackResolveBeat = nextAttackBeat;
+                telegraphed = false;
+                resolved = false;
+                attackAimLocked = false;
+                movementVelocity = Vector3.zero;
+                movementSmoothVelocity = Vector3.zero;
+                game.BeginCombatPhaseTransition(battlePhase, phaseRestUntilDsp);
             }
 
             if (health <= 0)
@@ -461,6 +695,23 @@ namespace MeixiEcho
         {
             if (dying) return;
             Die();
+        }
+
+        public Vector3 ExplodeForFinalStrike()
+        {
+            Vector3 explosionPosition = transform.position;
+            active = false;
+            dying = true;
+            deathReported = true;
+            SetAnimatorFloat(speedHash, 0f);
+            if (controller != null) controller.enabled = false;
+            if (renderers != null)
+            {
+                foreach (Renderer modelRenderer in renderers)
+                    if (modelRenderer != null) modelRenderer.enabled = false;
+            }
+            gameObject.SetActive(false);
+            return explosionPosition;
         }
 
         public bool ReceivePlayerAttack(Vector3 origin, Vector3 forward, bool heavy, bool onBeat)
@@ -600,13 +851,18 @@ namespace MeixiEcho
 
         private void RefreshAnimatorBinding(bool force)
         {
+            bool controllerAssignedThisFrame = false;
             if (animator != null)
             {
                 RuntimeAnimatorController controllerAsset = animator.runtimeAnimatorController;
                 if (controllerAsset == null)
                 {
                     controllerAsset = Resources.Load<RuntimeAnimatorController>(AnimatorControllerResource);
-                    if (controllerAsset != null) animator.runtimeAnimatorController = controllerAsset;
+                    if (controllerAsset != null)
+                    {
+                        animator.runtimeAnimatorController = controllerAsset;
+                        controllerAssignedThisFrame = true;
+                    }
                 }
 
                 if (animator.avatar == null || !animator.avatar.isValid)
@@ -622,8 +878,9 @@ namespace MeixiEcho
                 if (animator.runtimeAnimatorController != null && !animator.enabled) animator.enabled = true;
             }
 
-            bool readyNow = animator != null && animator.enabled && animator.runtimeAnimatorController != null &&
-                            animator.avatar != null && animator.avatar.isValid && animator.layerCount > 0;
+            bool readyNow = animator != null && animator.gameObject.activeInHierarchy && animator.enabled &&
+                            !controllerAssignedThisFrame && animator.isInitialized && animator.runtimeAnimatorController != null &&
+                            animator.avatar != null && animator.avatar.isValid;
             RuntimeAnimatorController currentController = readyNow ? animator.runtimeAnimatorController : null;
             Avatar currentAvatar = readyNow ? animator.avatar : null;
             bool bindingChanged = readyNow &&

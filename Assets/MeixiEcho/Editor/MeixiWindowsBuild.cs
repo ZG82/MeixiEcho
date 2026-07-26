@@ -37,11 +37,18 @@ namespace MeixiEcho.Editor
             PlayerSettings.productName = "梅溪回响";
             PlayerSettings.defaultScreenWidth = 1920;
             PlayerSettings.defaultScreenHeight = 1080;
-            PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.resizableWindow = true;
+            PlayerSettings.allowFullscreenSwitch = true;
 
             BuildReport report = BuildPipeline.BuildPlayer(options);
             if (report.summary.result == BuildResult.Succeeded)
             {
+                string minOperaNotice = Path.GetFullPath(Path.Combine(Application.dataPath,
+                    "MeixiEcho", "ThirdPartyNotices", "MinOperaPrelude.md"));
+                if (File.Exists(minOperaNotice))
+                    File.Copy(minOperaNotice, Path.Combine(outputDirectory,
+                        "MinOperaPrelude-ThirdPartyNotice.txt"), true);
                 Debug.Log($"《梅溪回响》Windows Demo 构建完成：{executable}");
                 EditorUtility.RevealInFinder(executable);
             }

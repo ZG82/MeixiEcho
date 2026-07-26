@@ -3,6 +3,205 @@ using UnityEngine;
 
 namespace MeixiEcho
 {
+    public sealed class CombatPhaseAnnouncement3D : MonoBehaviour
+    {
+        private static CombatPhaseAnnouncement3D active;
+        private float startedAt;
+        private int phase;
+        private string phaseName;
+
+        public static void Show(int nextPhase, string name)
+        {
+            if (active != null) Destroy(active.gameObject);
+            var root = new GameObject("战斗阶段切换·顶层电影字幕");
+            active = root.AddComponent<CombatPhaseAnnouncement3D>();
+            active.startedAt = Time.unscaledTime;
+            active.phase = Mathf.Clamp(nextPhase, 2, 3);
+            active.phaseName = name ?? string.Empty;
+        }
+
+        private void OnGUI()
+        {
+            float age = Time.unscaledTime - startedAt;
+            const float duration = 1.75f;
+            float enter = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / 0.16f));
+            float exit = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - duration + 0.34f) / 0.34f));
+            float alpha = Mathf.Min(enter, exit);
+            if (alpha <= 0f) return;
+            GUI.depth = -2500;
+            Color old = GUI.color;
+            float height = Screen.height * 0.29f;
+            float top = (Screen.height - height) * 0.50f;
+            GUI.color = new Color(0.004f, 0.008f, 0.014f, 0.88f * alpha);
+            GUI.DrawTexture(new Rect(0f, top, Screen.width, height), Texture2D.whiteTexture);
+            Color accent = phase == 3 ? new Color(1f, 0.16f, 0.22f) : new Color(1f, 0.66f, 0.16f);
+            GUI.color = new Color(accent.r, accent.g, accent.b, 0.90f * alpha);
+            float lineY = top + height * 0.20f;
+            GUI.DrawTexture(new Rect(Screen.width * 0.18f, lineY, Screen.width * 0.64f, 3f), Texture2D.whiteTexture);
+            var headline = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = Mathf.RoundToInt(Screen.height * 0.068f),
+                fontStyle = FontStyle.Bold,
+                richText = true
+            };
+            headline.normal.textColor = new Color(accent.r, accent.g, accent.b, alpha);
+            GUI.Label(new Rect(0f, top + height * 0.18f, Screen.width, height * 0.58f),
+                $"进入{(phase == 2 ? "二" : "三")}阶段！！！", headline);
+            var subtitle = new GUIStyle(headline)
+            {
+                fontSize = Mathf.RoundToInt(Screen.height * 0.026f),
+                fontStyle = FontStyle.Normal
+            };
+            subtitle.normal.textColor = new Color(0.82f, 0.94f, 0.96f, alpha);
+            GUI.Label(new Rect(0f, top + height * 0.68f, Screen.width, height * 0.22f), phaseName, subtitle);
+            GUI.color = old;
+        }
+
+        private void Update()
+        {
+            if (Time.unscaledTime - startedAt < 1.75f) return;
+            if (active == this) active = null;
+            Destroy(gameObject);
+        }
+
+        private void OnDestroy()
+        {
+            if (active == this) active = null;
+        }
+    }
+
+    public sealed class CombatDefeatOverlay3D : MonoBehaviour
+    {
+        private static CombatDefeatOverlay3D active;
+        private MeixiGame3D owner;
+        private Font font;
+
+        public static void Show(MeixiGame3D game)
+        {
+            if (active != null) Destroy(active.gameObject);
+            var root = new GameObject("回响力耗尽·顶层选择界面");
+            active = root.AddComponent<CombatDefeatOverlay3D>();
+            active.owner = game;
+            active.font = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "SimHei", "Arial" }, 42);
+        }
+
+        public static void Clear()
+        {
+            if (active == null) return;
+            Destroy(active.gameObject);
+            active = null;
+        }
+
+        private void OnGUI()
+        {
+            GUI.depth = -3000;
+            Color old = GUI.color;
+            GUI.color = new Color(0.018f, 0.002f, 0.008f, 0.94f);
+            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+            Rect card = new(Screen.width * 0.30f, Screen.height * 0.19f, Screen.width * 0.40f, Screen.height * 0.62f);
+            GUI.color = new Color(0.055f, 0.025f, 0.032f, 0.99f);
+            GUI.DrawTexture(card, Texture2D.whiteTexture);
+            GUI.color = new Color(0.92f, 0.08f, 0.14f, 0.95f);
+            GUI.DrawTexture(new Rect(card.x, card.y, card.width, 4f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(card.x, card.yMax - 4f, card.width, 4f), Texture2D.whiteTexture);
+
+            var eyebrow = NewStyle(Mathf.RoundToInt(Screen.height * 0.019f), new Color(0.92f, 0.26f, 0.30f), FontStyle.Normal);
+            GUI.Label(new Rect(card.x, card.y + card.height * 0.07f, card.width, card.height * 0.10f),
+                "MEIXI RESONANCE  /  ECHO LOST", eyebrow);
+            var title = NewStyle(Mathf.RoundToInt(Screen.height * 0.052f), new Color(1f, 0.76f, 0.62f), FontStyle.Bold);
+            GUI.Label(new Rect(card.x, card.y + card.height * 0.18f, card.width, card.height * 0.20f),
+                "回 响 力 已 耗 尽", title);
+            var body = NewStyle(Mathf.RoundToInt(Screen.height * 0.026f), new Color(0.86f, 0.90f, 0.89f), FontStyle.Normal);
+            GUI.Label(new Rect(card.x + card.width * 0.08f, card.y + card.height * 0.39f, card.width * 0.84f, card.height * 0.18f),
+                "梅溪的魂音暂时沉入寂静。\n请选择重新踏上旅途，或退出游戏。", body);
+
+            GUIStyle button = NewStyle(Mathf.RoundToInt(Screen.height * 0.029f), Color.white, FontStyle.Bold);
+            button.normal.background = Texture2D.whiteTexture;
+            button.hover.background = Texture2D.whiteTexture;
+            Rect retry = new(card.x + card.width * 0.16f, card.y + card.height * 0.62f, card.width * 0.68f, card.height * 0.12f);
+            GUI.backgroundColor = new Color(0.06f, 0.42f, 0.48f, 1f);
+            if (GUI.Button(retry, "重 新 旅 途", button)) owner?.RestartAfterDefeatFromOverlay();
+            Rect quit = new(card.x + card.width * 0.16f, card.y + card.height * 0.78f, card.width * 0.68f, card.height * 0.12f);
+            GUI.backgroundColor = new Color(0.52f, 0.055f, 0.075f, 1f);
+            if (GUI.Button(quit, "退 出 游 戏", button)) owner?.QuitAfterDefeatFromOverlay();
+            GUI.backgroundColor = Color.white;
+            GUI.color = old;
+        }
+
+        private GUIStyle NewStyle(int size, Color color, FontStyle style)
+        {
+            var result = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                font = font,
+                fontSize = size,
+                fontStyle = style,
+                wordWrap = true
+            };
+            result.normal.textColor = color;
+            result.hover.textColor = color;
+            return result;
+        }
+
+        private void OnDestroy()
+        {
+            if (active == this) active = null;
+        }
+    }
+
+    /// <summary>Thin unscaled red edge warning; the centre stays readable during a miss.</summary>
+    public sealed class CombatDamageVignette3D : MonoBehaviour
+    {
+        private static CombatDamageVignette3D active;
+        private float intensity;
+        private float age = 99f;
+
+        public static void Flash()
+        {
+            if (active == null)
+            {
+                var root = new GameObject("战斗受击·红色边缘警示");
+                active = root.AddComponent<CombatDamageVignette3D>();
+                DontDestroyOnLoad(root);
+            }
+            active.age = 0f;
+            active.intensity = 1f;
+        }
+
+        private void Update()
+        {
+            age += Time.unscaledDeltaTime;
+            intensity = Mathf.MoveTowards(intensity, 0f, Time.unscaledDeltaTime * 2.8f);
+            if (intensity <= 0.001f && age > 1.2f)
+            {
+                if (active == this) active = null;
+                Destroy(gameObject);
+            }
+        }
+
+        private void OnGUI()
+        {
+            if (intensity <= 0.001f) return;
+            float t = Mathf.Clamp01(age / 0.10f);
+            float pulse = Mathf.Min(1f, t) * Mathf.Clamp01((1.0f - age) / 0.65f);
+            pulse *= 0.84f * intensity;
+            Color old = GUI.color;
+            GUI.depth = -1002;
+            GUI.color = new Color(0.92f, 0.015f, 0.045f, pulse);
+            float edge = Mathf.Max(18f, Screen.height * 0.045f);
+            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, edge), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0f, Screen.height - edge, Screen.width, edge), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0f, edge, edge, Screen.height - edge * 2f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(Screen.width - edge, edge, edge, Screen.height - edge * 2f), Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 0.20f, 0.20f, pulse * 0.72f);
+            float inner = edge * 0.32f;
+            GUI.DrawTexture(new Rect(inner, inner, Screen.width - inner * 2f, inner * 0.55f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(inner, Screen.height - inner * 1.55f, Screen.width - inner * 2f, inner * 0.55f), Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+    }
+
     /// <summary>敌方蓄力期间围绕溪灵的红色禁近战音环。玩家在环内误按 J 会触发反击。</summary>
     public sealed class MeleeForbiddenRing3D : MonoBehaviour
     {
@@ -199,10 +398,11 @@ namespace MeixiEcho
             EnemyMusicImpact3D.Create(destination + Vector3.up * 0.08f, primary, safe ? 2.15f : 1.55f, 0.42f, safe ? 10 : 6);
         }
 
-        public static void CreateMelee(Vector3 origin, Vector3 impact, Vector3 forward, bool onBeat)
+        public static void CreateMelee(Vector3 origin, Vector3 impact, Vector3 forward, bool onBeat, int comboStep)
         {
             Color primary = onBeat ? new Color(0.88f, 1f, 1f) : new Color(0.10f, 0.90f, 1f);
-            var effect = CreateRoot("J·近战突进四重弦刃", onBeat ? 0.78f : 0.62f, 145f);
+            string comboName = comboStep == 2 ? "J·三段终拍回旋" : comboStep == 1 ? "J·二段左弦追击" : "J·一段突进弦刃";
+            var effect = CreateRoot(comboName, onBeat ? 0.78f : 0.62f, comboStep == 1 ? -125f : 145f + comboStep * 28f);
             Vector3 flatForward = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
             if (flatForward.sqrMagnitude < 0.01f) flatForward = Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, flatForward);
@@ -214,9 +414,21 @@ namespace MeixiEcho
                 for (int i = 0; i < line.positionCount; i++)
                 {
                     float t = i / (line.positionCount - 1f);
-                    float angle = Mathf.Lerp(-1.20f, 1.12f, t) + slash * 0.14f;
+                    float directionSign = comboStep == 1 ? -1f : 1f;
+                    float angle = Mathf.Lerp(-1.20f, 1.12f, t) * directionSign + slash * 0.14f;
                     Vector3 arc = right * Mathf.Sin(angle) * radius + Vector3.up * (Mathf.Cos(angle) * radius * 0.72f);
                     line.SetPosition(i, impact + flatForward * (0.18f + slash * 0.05f) + arc);
+                }
+            }
+            if (comboStep == 2)
+            {
+                LineRenderer finisherArc = effect.AddWorldLine("三段回旋收束", Color.white, 38, 0.11f);
+                for (int i = 0; i < finisherArc.positionCount; i++)
+                {
+                    float t = i / (finisherArc.positionCount - 1f);
+                    float angle = t * Mathf.PI * 2f;
+                    finisherArc.SetPosition(i, impact + right * Mathf.Cos(angle) * 1.48f +
+                        Vector3.up * (0.78f + Mathf.Sin(angle) * 0.56f) + flatForward * Mathf.Sin(angle * 2f) * 0.18f);
                 }
             }
             LineRenderer lunge = effect.AddWorldLine("突进残响谱线", primary, 26, 0.085f);
@@ -232,6 +444,177 @@ namespace MeixiEcho
                 effect.AddNote(impact + right * Mathf.Cos(angle) * 1.25f + Vector3.up * (0.25f + Mathf.Sin(angle) * 0.90f),
                     i % 3 == 0 ? new Color(1f, 0.68f, 0.18f) : primary, 0.18f, i == 3);
             }
+        }
+
+        public static void CreateComboWave(Vector3 origin, Vector3 impact, Vector3 forward)
+        {
+            var effect = CreateRoot("J加K·潮汐声浪", 0.82f, 210f);
+            Vector3 axis = Vector3.ProjectOnPlane(impact - origin, Vector3.up).normalized;
+            if (axis.sqrMagnitude < 0.01f) axis = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, axis);
+            for (int band = 0; band < 5; band++)
+            {
+                Color color = band == 2 ? Color.white : band % 2 == 0 ? new Color(1f, 0.62f, 0.14f) : new Color(0.20f, 0.94f, 1f);
+                LineRenderer line = effect.AddWorldLine("宽幅声浪弧面_" + band, color, 34, 0.15f - band * 0.018f);
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float arc = Mathf.Sin(t * Mathf.PI);
+                    line.SetPosition(i, Vector3.Lerp(origin, impact, t) + right * ((t - 0.5f) * 2.6f * arc) + Vector3.up * (0.40f + arc * (0.45f + band * 0.07f)));
+                }
+            }
+            EnemyMusicImpact3D.Create(impact, new Color(1f, 0.72f, 0.18f), 3.8f, 0.65f, 18);
+        }
+
+        public static void CreateBlinkStrike(Vector3 origin, Vector3 impact, Vector3 forward)
+        {
+            var effect = CreateRoot("J加SPACE·瞬身斩", 0.74f, 290f);
+            Vector3 axis = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, axis);
+            for (int slash = 0; slash < 4; slash++)
+            {
+                LineRenderer line = effect.AddWorldLine("瞬身折光斩_" + slash,
+                    slash == 1 ? Color.white : new Color(0.24f, 1f, 0.86f), 30, 0.15f - slash * 0.02f);
+                float radius = 0.75f + slash * 0.18f;
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float angle = Mathf.Lerp(-1.25f, 1.28f, t) + slash * 0.13f;
+                    line.SetPosition(i, impact + right * Mathf.Sin(angle) * radius + Vector3.up * (0.85f + Mathf.Cos(angle) * radius * 0.68f) + axis * 0.12f);
+                }
+            }
+            EnemyMusicImpact3D.Create(impact, new Color(0.18f, 1f, 0.86f), 4.8f, 0.75f, 24);
+        }
+
+        public static void CreatePhaseThroughSlash(Vector3 origin, Vector3 destination, Vector3 impact, int stepIndex)
+        {
+            Color primary = stepIndex switch
+            {
+                0 => new Color(.18f, .96f, 1f),
+                1 => new Color(1f, .54f, .16f),
+                _ => new Color(1f, .18f, .42f)
+            };
+            var effect = CreateRoot($"J三连·第{stepIndex + 1}段瞬身音斩", .38f + stepIndex * .04f,
+                stepIndex % 2 == 0 ? 280f : -260f);
+            Vector3 travel = Vector3.ProjectOnPlane(destination - origin, Vector3.up);
+            Vector3 forward = travel.sqrMagnitude > .01f ? travel.normalized : Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+            for (int ribbon = 0; ribbon < 3; ribbon++)
+            {
+                Color color = ribbon == 1 ? new Color(.82f, 1f, .98f) : ribbon == 0 ? primary : new Color(.16f, .82f, 1f);
+                LineRenderer line = effect.AddWorldLine("穿身五线谱斩_" + ribbon, color, 42,
+                    ribbon == 1 ? .090f : .052f);
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float envelope = Mathf.Sin(t * Mathf.PI);
+                    float wave = Mathf.Sin(t * Mathf.PI * (5f + stepIndex) + ribbon * .72f) * envelope;
+                    line.SetPosition(i, Vector3.Lerp(origin, destination, t) + Vector3.up * (.58f + envelope * .72f) +
+                        right * (wave * (.075f + ribbon * .018f) + (ribbon - 1) * .030f));
+                }
+            }
+            for (int noteIndex = 0; noteIndex < 4; noteIndex++)
+            {
+                float t = (noteIndex + .7f) / 4.8f;
+                effect.AddNote(Vector3.Lerp(origin, destination, t) + Vector3.up * (.56f + Mathf.Sin(t * Mathf.PI) * .76f) +
+                    right * Mathf.Sin(t * Mathf.PI * 4f) * .24f,
+                    noteIndex == 2 ? new Color(.88f, 1f, .98f) : primary, .105f + stepIndex * .012f, noteIndex == 2);
+            }
+            // The visible blade is a musical crescent rather than a flat coloured circle.
+            for (int blade = 0; blade < 2; blade++)
+            {
+                LineRenderer crescent = effect.AddWorldLine("音符月牙斩_" + blade,
+                    blade == 1 ? new Color(.90f, 1f, .96f) : primary, 32, .090f - blade * .018f);
+                float radius = .86f + blade * .18f + stepIndex * .10f;
+                for (int i = 0; i < crescent.positionCount; i++)
+                {
+                    float t = i / (crescent.positionCount - 1f);
+                    float angle = Mathf.Lerp(-1.30f, 1.30f, t) + blade * .11f;
+                    crescent.SetPosition(i, impact + right * Mathf.Sin(angle) * radius +
+                        Vector3.up * (.82f + Mathf.Cos(angle) * radius * .72f) + forward * blade * .06f);
+                }
+            }
+            if (stepIndex >= 2)
+                EnemyMusicImpact3D.Create(impact, primary, 3.0f, .52f, 8);
+        }
+
+        public static void CreateSequenceFinale(Vector3 origin, Vector3 impact, Vector3 forward, bool alternating)
+        {
+            Color warm = alternating ? new Color(.82f, .34f, 1f) : new Color(1f, .62f, .14f);
+            var effect = CreateRoot(alternating ? "KJK·交错终拍" : "JKJ·交响终拍", .96f, alternating ? -310f : 310f);
+            Vector3 axis = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
+            if (axis.sqrMagnitude < .01f) axis = Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, axis);
+            for (int slash = 0; slash < 4; slash++)
+            {
+                Color color = slash == 2 || slash == 3 ? Color.white : slash % 2 == 0 ? warm : new Color(.14f, .94f, 1f);
+                LineRenderer line = effect.AddWorldLine("交叉和弦斩_" + slash, color, 38, .12f - slash * .009f);
+                float sign = slash % 2 == 0 ? 1f : -1f;
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float x = Mathf.Lerp(-1.55f, 1.55f, t);
+                    float y = Mathf.Lerp(-1.10f, 1.10f, t) * sign;
+                    line.SetPosition(i, impact + right * x + Vector3.up * (.92f + y) + axis * ((slash - 1.5f) * .055f));
+                }
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                float angle = i / 6f * Mathf.PI * 2f;
+                effect.AddNote(impact + right * Mathf.Cos(angle) * 1.48f + Vector3.up * (.88f + Mathf.Sin(angle) * 1.10f),
+                    i % 3 == 0 ? new Color(.90f, 1f, .96f) : warm, .14f, i == 3);
+            }
+            EnemyMusicImpact3D.Create(impact, warm, 3.9f, .68f, 14);
+        }
+
+        public static void CreateDualHandResonance(Vector3 position, bool qVoice, bool sustained)
+        {
+            Color primary = qVoice ? new Color(.18f, .92f, 1f) : new Color(.42f, 1f, .68f);
+            var effect = CreateRoot(sustained ? "左手持续声部·环形共鸣" : "左手短拍·声纹拨奏",
+                sustained ? .88f : .62f, qVoice ? 190f : -190f);
+            int rings = sustained ? 4 : 2;
+            for (int ring = 0; ring < rings; ring++)
+            {
+                LineRenderer line = effect.AddWorldLine("左手环形五线谱_" + ring,
+                    ring == 1 ? Color.white : primary, 48, .085f - ring * .010f);
+                float radius = .58f + ring * .18f;
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float angle = i / (line.positionCount - 1f) * Mathf.PI * 2f;
+                    line.SetPosition(i, position + new Vector3(Mathf.Cos(angle) * radius,
+                        Mathf.Sin(angle * (sustained ? 3f : 2f)) * .13f,
+                        Mathf.Sin(angle) * radius));
+                }
+            }
+            for (int i = 0; i < (sustained ? 6 : 3); i++)
+            {
+                float angle = i / (float)(sustained ? 6 : 3) * Mathf.PI * 2f;
+                effect.AddNote(position + new Vector3(Mathf.Cos(angle) * .78f, Mathf.Sin(angle * 2f) * .34f,
+                    Mathf.Sin(angle) * .78f), i % 2 == 0 ? primary : Color.white, .14f, sustained && i == 3);
+            }
+        }
+
+        public static void CreateTripleArc(Vector3 origin, Vector3 impact, Vector3 forward)
+        {
+            var effect = CreateRoot("K加SPACE·三重抛物线音符", 1.0f, -185f);
+            Vector3 axis = Vector3.ProjectOnPlane(impact - origin, Vector3.up).normalized;
+            if (axis.sqrMagnitude < 0.01f) axis = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, axis);
+            for (int arc = 0; arc < 3; arc++)
+            {
+                Color color = arc == 1 ? Color.white : new Color(0.72f, 0.32f + arc * 0.14f, 1f);
+                LineRenderer line = effect.AddWorldLine("抛物线音符轨迹_" + arc, color, 38, 0.10f + arc * 0.018f);
+                Vector3 start = origin + right * (arc - 1) * 0.42f;
+                Vector3 end = impact + right * (arc - 1) * 0.30f;
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float t = i / (line.positionCount - 1f);
+                    float arcHeight = Mathf.Sin(t * Mathf.PI) * (1.5f + arc * 0.22f);
+                    line.SetPosition(i, Vector3.Lerp(start, end, t) + Vector3.up * arcHeight + right * Mathf.Sin(t * Mathf.PI * 2f + arc) * 0.10f);
+                }
+                effect.AddNote(Vector3.Lerp(start, end, 0.72f) + Vector3.up * 0.42f, color, 0.26f, true);
+            }
+            EnemyMusicImpact3D.Create(impact, new Color(0.72f, 0.34f, 1f), 4.2f, 0.70f, 20);
         }
 
         public static void CreateRangedCast(Vector3 origin, Vector3 direction, bool boosted)

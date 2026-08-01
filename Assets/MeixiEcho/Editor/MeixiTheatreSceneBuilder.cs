@@ -108,7 +108,9 @@ namespace MeixiEcho.Editor
             }
 
             var materialMap = new Dictionary<string, Material>(System.StringComparer.Ordinal);
+            var textureMap = new Dictionary<EntityId, Texture2D>();
             int materialIndex = 0;
+            int textureIndex = 0;
             foreach (Renderer renderer in preview.GetComponentsInChildren<Renderer>(true))
             {
                 Material[] slots = renderer.sharedMaterials;
@@ -121,6 +123,8 @@ namespace MeixiEcho.Editor
                     if (!materialMap.TryGetValue(materialKey, out Material saved))
                     {
                         saved = new Material(source) { name = materialKey };
+                        PersistGeneratedTexture(saved, source, "_BaseMap", textureMap, ref textureIndex);
+                        PersistGeneratedTexture(saved, source, "_MainTex", textureMap, ref textureIndex);
                         string path = $"{PreviewAssetFolder}/Material_{materialIndex++:D3}_{SafeName(materialKey)}.mat";
                         AssetDatabase.CreateAsset(saved, path);
                         materialMap[materialKey] = saved;
@@ -141,6 +145,23 @@ namespace MeixiEcho.Editor
                 AssetDatabase.CreateAsset(saved, $"{PreviewAssetFolder}/Volume_{profileIndex++:D2}_{SafeName(source.name)}.asset");
                 volume.sharedProfile = saved;
             }
+        }
+
+        private static void PersistGeneratedTexture(Material saved, Material source, string property,
+            Dictionary<EntityId, Texture2D> textureMap, ref int textureIndex)
+        {
+            if (!source.HasProperty(property) || source.GetTexture(property) is not Texture2D texture) return;
+            if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(texture))) return;
+            EntityId id = texture.GetEntityId();
+            if (!textureMap.TryGetValue(id, out Texture2D persisted))
+            {
+                persisted = Object.Instantiate(texture);
+                persisted.name = texture.name;
+                string path = $"{PreviewAssetFolder}/Texture_{textureIndex++:D3}_{SafeName(texture.name)}.asset";
+                AssetDatabase.CreateAsset(persisted, path);
+                textureMap[id] = persisted;
+            }
+            saved.SetTexture(property, persisted);
         }
 
         private static void EnsureFolder(string path)

@@ -18,7 +18,11 @@ namespace MeixiEcho
         private const string LegacyVisualRootNameV6 = "第一章_仿真村落与边界远景_v6";
         private const string LegacyVisualRootNameV7 = "第一章_仿真村落与边界远景_v7";
         private const string LegacyVisualRootNameV8 = "第一章_仿真村落与边界远景_v8";
-        public const string VisualRootName = "第一章_仿真村落与边界远景_v9";
+        private const string LegacyVisualRootNameV9 = "第一章_仿真村落与边界远景_v9";
+        private const string LegacyVisualRootNameV10 = "第一章_仿真村落与边界远景_v10";
+        private const string LegacyVisualRootNameV11 = "第一章_仿真村落与边界远景_v11";
+        private const string LegacyVisualRootNameV12 = "第一章_仿真村落与边界远景_v12";
+        public const string VisualRootName = "第一章_仿真村落与边界远景_v13";
         private const string RealisticVisualName = "写实动作角色_完整蒙皮_v3";
         private const string LegacyRealisticVisualName = "写实角色模型";
         private const string LegacyRealisticVisualNameV2 = "写实角色模型_完整蒙皮_v2";
@@ -27,7 +31,8 @@ namespace MeixiEcho
         private static readonly HashSet<string> NonInteractiveColliderNames = new(StringComparer.Ordinal)
         {
             "竹叶云", "橄榄树自然分枝", "橄榄树冠", "环形音粒", "梅溪水面", "梯田浅水",
-            "乡灯青瓦帽", "暖色竹编乡灯", "阿禾耳机", "waterplant_A", "waterplant_B", "waterlily_A"
+            "乡灯青瓦帽", "暖色竹编乡灯", "阿禾耳机", "waterplant_A", "waterplant_B", "waterlily_A",
+            "湿地蕨草", "溪畔水草", "圆润青石踏步", "村口湿青石", "中心土坪"
         };
 
         public static void Ensure()
@@ -46,6 +51,14 @@ namespace MeixiEcho
             if (legacyShellV7 != null) legacyShellV7.SetActive(false);
             GameObject legacyShellV8 = GameObject.Find(LegacyVisualRootNameV8);
             if (legacyShellV8 != null) legacyShellV8.SetActive(false);
+            GameObject legacyShellV9 = GameObject.Find(LegacyVisualRootNameV9);
+            if (legacyShellV9 != null) legacyShellV9.SetActive(false);
+            GameObject legacyShellV10 = GameObject.Find(LegacyVisualRootNameV10);
+            if (legacyShellV10 != null) legacyShellV10.SetActive(false);
+            GameObject legacyShellV11 = GameObject.Find(LegacyVisualRootNameV11);
+            if (legacyShellV11 != null) legacyShellV11.SetActive(false);
+            GameObject legacyShellV12 = GameObject.Find(LegacyVisualRootNameV12);
+            if (legacyShellV12 != null) legacyShellV12.SetActive(false);
             if (GameObject.Find(VisualRootName) != null) return;
 
             GameObject root = new(VisualRootName) { isStatic = true };
@@ -56,6 +69,7 @@ namespace MeixiEcho
             RenderSettings.fogEndDistance = 138f;
             MeshBuilder plaster = new();
             MeshBuilder stone = new();
+            MeshBuilder bridgeStone = new();
             MeshBuilder timber = new();
             MeshBuilder roof = new();
             MeshBuilder glass = new();
@@ -68,25 +82,28 @@ namespace MeixiEcho
             MeshBuilder creekBed = new();
             MeshBuilder naturalRocks = new();
             MeshBuilder decals = new();
-            MeshBuilder surfaceDecals = new();
             MeshBuilder grassPatches = new();
             MeshBuilder grassBlades = new();
             MeshBuilder playableGrass = new();
+            MeshBuilder mountainPath = new();
+            List<Vector4> creekObstacles = new();
 
             AddPlayableGround(playableGrass, creekBed);
+            AddMountainPath(mountainPath);
 
             // Foreground houses frame the playable road. Rendering and collision stay
             // separate so the detailed meshes never become expensive MeshColliders.
-            AddHouse(plaster, stone, timber, roof, glass, decals, new Vector3(13.7f, 0f, 9.4f), 198f, 1.08f, 0);
-            AddHouse(plaster, stone, timber, roof, glass, decals, new Vector3(-14.2f, 0f, 13.8f), 154f, .94f, 4);
-            AddHouse(plaster, stone, timber, roof, glass, decals, new Vector3(18.2f, .38f, 18.8f), 214f, .76f, 8);
-            AddHouseSurfaceDetails(surfaceDecals, new Vector3(13.7f, 0f, 9.4f), 198f, 1.08f, 0);
-            AddHouseSurfaceDetails(surfaceDecals, new Vector3(-14.2f, 0f, 13.8f), 154f, .94f, 5);
-            AddHouseSurfaceDetails(surfaceDecals, new Vector3(18.2f, .38f, 18.8f), 214f, .76f, 9);
+            Vector3 eastHouse = GroundedPosition(13.7f, 9.4f);
+            Vector3 westHouse = GroundedPosition(-14.2f, 13.8f);
+            Vector3 terraceHouse = GroundedPosition(18.2f, 18.8f);
+            AddHouse(plaster, stone, timber, roof, glass, decals, eastHouse, 198f, 1.08f, 0);
+            AddHouse(plaster, stone, timber, roof, glass, decals, westHouse, 154f, .94f, 4);
+            AddHouse(plaster, stone, timber, roof, glass, decals, terraceHouse, 214f, .76f, 8);
             AddTerraceWalls(stone, new Vector3(0f, -.18f, 19.5f));
-            AddPlayableCreek(playableWater, creekBed, surfaceDecals);
-            AddDetailedStoneBridge(stone, timber);
+            AddPlayableCreek(playableWater, creekBed);
+            AddDetailedStoneBridge(bridgeStone);
             AddPlayableRockClusters(naturalRocks);
+            AddCreekBoulders(naturalRocks, creekObstacles);
             AddBoundaryFenceVisuals(stone, timber);
             AddPlayableNaturalVegetation(treeBark, foliage, grassBlades);
 
@@ -96,7 +113,6 @@ namespace MeixiEcho
 
             Texture2D atlas = Resources.Load<Texture2D>("Textures/Realistic/Generated/MeixiVillageMaterialAtlas");
             Texture2D decalAtlas = Resources.Load<Texture2D>("Textures/Realistic/Generated/MeixiVillageDecals");
-            Texture2D surfaceDecalAtlas = Resources.Load<Texture2D>("Textures/Realistic/Generated/MeixiSurfaceDecals");
             Texture2D foliageAtlas = Resources.Load<Texture2D>("Textures/Realistic/Generated/MeixiFoliageAtlas");
             Texture2D grass = Resources.Load<Texture2D>("Textures/Realistic/HumidGrassGround");
             Texture2D mossyBluestone = Resources.Load<Texture2D>("Textures/Realistic/MossyBluestone");
@@ -107,6 +123,8 @@ namespace MeixiEcho
                 CreateAtlasMaterial("仿真旧灰墙", atlas, new Vector2(0f, .5f), new Color(.94f, .92f, .86f), .08f), true, true);
             CreateMeshObject(root.transform, "湿润梅溪青石", stone,
                 CreateAtlasMaterial("仿真湿青石", atlas, new Vector2(.5f, .5f), new Color(.82f, .88f, .88f), .16f), true, true);
+            CreateMeshObject(root.transform, "拱券青石桥", bridgeStone,
+                CreateRockMaterial("桥体湿润青石", mossyBluestone, new Color(.72f, .79f, .77f), .18f, .72f), true, true);
             CreateMeshObject(root.transform, "闽式杉木构架", timber,
                 CreateAtlasMaterial("仿真老杉木", atlas, new Vector2(.5f, 0f), new Color(.88f, .78f, .68f), .20f), true, true);
             CreateMeshObject(root.transform, "橄榄与竹林自然树皮", treeBark,
@@ -116,8 +134,8 @@ namespace MeixiEcho
             CreateMeshObject(root.transform, "窗内暗面与玻璃", glass,
                 CreateMaterial("旧窗玻璃", new Color(.055f, .10f, .105f, .94f), .70f), false, true);
             CreateMeshObject(root.transform, "边界内外连续湿润草地", outerGrass,
-                CreateTexturedMaterial("边界内外统一湿润草地", meadowGround != null ? meadowGround : grass,
-                    new Color(.86f, .90f, .80f), .035f, new Vector2(12f, 12f)), false, true);
+                CreateGroundMaterial("边界内外统一湿润草地", meadowGround != null ? meadowGround : grass,
+                    new Color(.86f, .90f, .80f), .035f, new Vector2(12f, 12f), .18f), false, true);
             CreateMeshObject(root.transform, "梅溪多层写实远山", mountains,
                 CreateTexturedMaterial("远山岩土与植被", dampGround != null ? dampGround : grass,
                     new Color(.56f, .64f, .54f), .05f, new Vector2(9f, 9f)), false, true);
@@ -126,31 +144,39 @@ namespace MeixiEcho
             CreateMeshObject(root.transform, "四向统一草皮贴花", grassPatches,
                 CreateTexturedMaterial("统一湿润草皮贴花", grass, new Color(.72f, .82f, .68f), .04f, Vector2.one), false, true);
             CreateMeshObject(root.transform, "可玩区写实湿润草地", playableGrass,
-                CreateTexturedMaterial("可玩区湿润草地", meadowGround != null ? meadowGround : dampGround != null ? dampGround : grass,
-                    new Color(.86f, .90f, .80f), .035f, new Vector2(12f, 12f)), false, true);
+                CreateGroundMaterial("可玩区湿润草地", meadowGround != null ? meadowGround : dampGround != null ? dampGround : grass,
+                    new Color(.86f, .90f, .80f), .035f, new Vector2(12f, 12f), .34f), false, true, true);
+            CreateMeshObject(root.transform, "连续起伏山路", mountainPath,
+                CreateGroundMaterial("潮湿山路泥土", dampGround, new Color(.78f, .70f, .58f), .055f,
+                    new Vector2(4.2f, 4.2f), .42f), false, true);
             CreateMeshObject(root.transform, "可玩区湿润草叶", grassBlades,
-                CreateDoubleSidedFoliageMaterial("写实草叶", null, new Color(.17f, .34f, .16f), .02f), false, true);
+                CreateDoubleSidedFoliageMaterial("写实草叶", null, new Color(.28f, .40f, .16f), .02f), false, true);
             CreateMeshObject(root.transform, "溪床湿润卵石", creekBed,
-                CreateTexturedMaterial("溪床湿青石", mossyBluestone, new Color(.48f, .56f, .55f), .20f,
-                    new Vector2(5f, 2.2f)), false, true);
+                CreateRockMaterial("溪床湿青石", mossyBluestone, new Color(.48f, .56f, .55f), .20f, 1f),
+                false, true, true);
             CreateMeshObject(root.transform, "可玩区自然山石", naturalRocks,
-                CreateTexturedMaterial("苔痕自然山石", mossyBluestone, new Color(.72f, .78f, .76f), .13f,
-                    new Vector2(1.8f, 1.8f)), true, true);
+                CreateRockMaterial("苔痕自然山石", mossyBluestone, new Color(.72f, .78f, .76f), .13f, .48f),
+                true, true);
             CreateMeshObject(root.transform, "边界外梅溪水脉", water,
                 CreateTransparentMaterial("远景溪水", null, new Color(.10f, .34f, .38f, .78f), .78f), false, true);
-            CreateMeshObject(root.transform, "连续弯曲梅溪水面", playableWater,
+            GameObject creekWaterObject = CreateMeshObject(root.transform, "连续弯曲梅溪水面", playableWater,
                 CreateCreekWaterMaterial(), false, false);
+            if (creekWaterObject != null)
+            {
+                MeixiInteractiveCreek interactiveCreek = creekWaterObject.AddComponent<MeixiInteractiveCreek>();
+                interactiveCreek.Configure(-.305f, creekObstacles.ToArray());
+            }
             CreateMeshObject(root.transform, "村落岁月痕迹贴花", decals,
                 CreateTransparentMaterial("仿真村落贴花", decalAtlas, Color.white, .04f), false, false);
-            CreateMeshObject(root.transform, "地板与溪岸仿真细节", surfaceDecals,
-                CreateTransparentMaterial("生成式地表细节贴花", surfaceDecalAtlas, Color.white, .06f), false, false);
 
             CreateLowCostCollisionProxies(root.transform);
+            ValidateGroundCoverage();
+            ValidateBridgeCoverage();
             root.AddComponent<MeixiRuntimePerformanceProbe>();
 
-            Debug.Log($"[MeixiScene] Photoreal chapter-one shell v9 ready: 18 combined renderers, " +
-                      $"{decals.QuadCount + surfaceDecals.QuadCount} decals, visible creek, grounded trees/rocks, " +
-                      "dense foliage, detailed modular collision and fence-aligned air walls.");
+            Debug.Log($"[MeixiScene] Photoreal chapter-one shell v12 ready: combined renderers, " +
+                      $"{decals.QuadCount} wall decals, interactive shallow creek without ground cards, " +
+                      "rolling mountain path, grounded houses, balanced foliage and creek-following collision.");
         }
 
         private static void OptimizeAuthoredDecorations()
@@ -177,9 +203,11 @@ namespace MeixiEcho
                 if (renderer.TryGetComponent(out BoxCollider groundCollider) &&
                     scale.x >= 45f && scale.z >= 45f && scale.y <= 1.5f)
                 {
-                    // Keep the authored primitive as the stable traversal floor, but
-                    // hide it so the carved creek-bank mesh reveals the lowered water.
+                    // The old collider crossed the entire creek and made the player
+                    // walk above the water. The v10 shell supplies separate bank and
+                    // creek-bed MeshColliders which follow the visible geometry.
                     renderer.enabled = false;
+                    groundCollider.enabled = false;
                     continue;
                 }
                 string objectName = renderer.gameObject.name;
@@ -190,12 +218,19 @@ namespace MeixiEcho
                     renderer.enabled = false;
                     continue;
                 }
-                if (objectName.Contains("waterlily", StringComparison.OrdinalIgnoreCase))
+                if (objectName.Contains("waterlily", StringComparison.OrdinalIgnoreCase) ||
+                    objectName.Contains("waterplant", StringComparison.OrdinalIgnoreCase) ||
+                    objectName.Equals("湿地蕨草", StringComparison.Ordinal) ||
+                    objectName.Equals("溪畔水草", StringComparison.Ordinal) ||
+                    objectName.Equals("中心土坪", StringComparison.Ordinal) ||
+                    objectName.Equals("圆润青石踏步", StringComparison.Ordinal) ||
+                    objectName.Equals("村口湿青石", StringComparison.Ordinal))
                 {
-                    // The legacy asset is a bright low-poly disk with a triangular
-                    // cutout. It read as a game token on top of the rebuilt creek.
+                    // Legacy cards and flat paving carried incompatible vertex colors
+                    // and made the rebuilt ground read as discoloured stickers.
                     renderer.enabled = false;
                     renderer.forceRenderingOff = true;
+                    if (renderer.TryGetComponent(out Collider legacyCollider)) legacyCollider.enabled = false;
                     continue;
                 }
                 if (IsLegacyBoundaryVisual(renderer.transform))
@@ -250,9 +285,16 @@ namespace MeixiEcho
             {
                 string name = current.name;
                 if (name.Equals("闽清古厝", StringComparison.Ordinal) ||
+                    name.Equals("梅溪石桥", StringComparison.Ordinal) ||
+                    name.Contains("building_bridge", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("湿地蕨草", StringComparison.Ordinal) ||
+                    name.Equals("溪畔水草", StringComparison.Ordinal) ||
+                    name.Contains("waterplant", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("waterlily", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("橄榄树", StringComparison.Ordinal) ||
                     name.Equals("竹林", StringComparison.Ordinal) ||
-                    name.Equals("竹叶云", StringComparison.Ordinal)) return true;
+                    name.Equals("竹叶云", StringComparison.Ordinal) ||
+                    name.Contains("rock_single_", StringComparison.OrdinalIgnoreCase)) return true;
             }
             return false;
         }
@@ -809,6 +851,23 @@ namespace MeixiEcho
             AddLatticeWindow(timber, glass, origin, rotation, new Vector3(-2.15f, 2.48f, -depth * .5f - .25f), scale);
             AddLatticeWindow(timber, glass, origin, rotation, new Vector3(2.15f, 2.48f, -depth * .5f - .25f), scale);
 
+            // Side and rear openings keep the houses convincing from the free camera,
+            // instead of presenting textured blank boxes away from the front facade.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float x = side * (width * .5f + .205f);
+                Box(glass, new Vector3(x, 2.48f, .48f), new Vector3(.10f, 1.24f, 1.20f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .05f, 2.48f, -.15f), new Vector3(.18f, 1.46f, .11f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .05f, 2.48f, 1.11f), new Vector3(.18f, 1.46f, .11f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .05f, 3.16f, .48f), new Vector3(.18f, .11f, 1.38f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .05f, 1.80f, .48f), new Vector3(.18f, .11f, 1.38f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .06f, 2.48f, .48f), new Vector3(.19f, 1.30f, .065f), Vector3.zero);
+                Box(timber, new Vector3(x + side * .06f, 2.48f, .48f), new Vector3(.19f, .065f, 1.24f), Vector3.zero);
+            }
+            for (int side = -1; side <= 1; side += 2)
+                AddLatticeWindow(timber, glass, origin, rotation * Quaternion.Euler(0f, 180f, 0f),
+                    new Vector3(side * 2.05f, 2.42f, -depth * .5f - .225f), scale);
+
             // Left and right panels rise toward the ridge. The previous signs made
             // both eaves higher than the centre, so some rotated houses read upside-down.
             Box(roof, new Vector3(-1.72f, 4.65f + roofLift, 0f), new Vector3(4.05f, .22f, depth + 1.55f), new Vector3(0f, 0f, 28f));
@@ -852,60 +911,148 @@ namespace MeixiEcho
 
             AddWallDecal(decals, origin, rotation, new Vector3(-2.10f, 1.20f, -depth * .5f - .372f), new Vector2(1.18f, .88f) * scale, decalSeed % 16);
             AddWallDecal(decals, origin, rotation, new Vector3(2.30f, 3.12f, -depth * .5f - .374f), new Vector2(.90f, .72f) * scale, (decalSeed + 3) % 16);
-            AddGroundDecal(decals, origin + rotation * new Vector3(-1.6f, .82f, -depth * .5f - 1.18f), rotation, new Vector2(1.10f, .72f) * scale, (decalSeed + 6) % 16);
-        }
-
-        private static void AddHouseSurfaceDetails(MeshBuilder details, Vector3 origin, float yaw, float scale, int seed)
-        {
-            Quaternion rotation = Quaternion.Euler(0f, yaw, 0f);
-            // Worn floor scuffs, damp stone marks and leaves are generated as quads in
-            // the same renderer. Slight height separation avoids z-fighting.
-            AddGroundDecal(details, origin + rotation * new Vector3(-1.15f, .878f, -.36f), rotation,
-                new Vector2(1.32f, 1.05f) * scale, (seed + 8) % 16);
-            AddGroundDecal(details, origin + rotation * new Vector3(1.25f, .880f, .48f), rotation,
-                new Vector2(1.05f, .82f) * scale, (seed + 12) % 16);
-            AddGroundDecal(details, origin + rotation * new Vector3(.35f, .955f, -3.46f), rotation,
-                new Vector2(1.25f, .88f) * scale, (seed + 4) % 16);
-            AddGroundDecal(details, origin + rotation * new Vector3(-1.45f, .958f, -3.22f), rotation,
-                new Vector2(.92f, .72f) * scale, (seed + 1) % 16);
         }
 
         private static void AddPlayableGround(MeshBuilder grass, MeshBuilder creekBed)
         {
-            const int segments = 44;
-            for (int i = 0; i < segments; i++)
+            const int xSegments = 96;
+            const int bankBands = 18;
+            for (int i = 0; i < xSegments; i++)
             {
-                float x0 = Mathf.Lerp(-24f, 24f, i / (float)segments);
-                float x1 = Mathf.Lerp(-24f, 24f, (i + 1f) / segments);
+                float x0 = Mathf.Lerp(-24f, 24f, i / (float)xSegments);
+                float x1 = Mathf.Lerp(-24f, 24f, (i + 1f) / xSegments);
                 float left0 = CreekCenterZ(x0) - CreekHalfWidth(x0) - .72f;
                 float left1 = CreekCenterZ(x1) - CreekHalfWidth(x1) - .72f;
                 float right0 = CreekCenterZ(x0) + CreekHalfWidth(x0) + .72f;
                 float right1 = CreekCenterZ(x1) + CreekHalfWidth(x1) + .72f;
-                float u0 = i / (float)segments;
-                float u1 = (i + 1f) / segments;
 
-                grass.AddQuad(new Vector3(x0, -.035f, -24f), new Vector3(x1, -.035f, -24f),
-                    new Vector3(x1, -.035f, left1), new Vector3(x0, -.035f, left0),
-                    new Rect(u0 * 12f, 0f, (u1 - u0) * 12f, 5.2f));
-                grass.AddQuad(new Vector3(x0, -.035f, right0), new Vector3(x1, -.035f, right1),
-                    new Vector3(x1, -.035f, 24f), new Vector3(x0, -.035f, 24f),
-                    new Rect(u0 * 12f, 6.8f, (u1 - u0) * 12f, 5.2f));
+                for (int band = 0; band < bankBands; band++)
+                {
+                    float v0 = band / (float)bankBands;
+                    float v1 = (band + 1f) / bankBands;
+                    float south00 = Mathf.Lerp(-24f, left0, v0);
+                    float south01 = Mathf.Lerp(-24f, left0, v1);
+                    float south10 = Mathf.Lerp(-24f, left1, v0);
+                    float south11 = Mathf.Lerp(-24f, left1, v1);
+                    Vector3 southA = GroundPoint(x0, south00);
+                    Vector3 southB = GroundPoint(x0, south01);
+                    Vector3 southC = GroundPoint(x1, south11);
+                    Vector3 southD = GroundPoint(x1, south10);
+                    grass.AddQuad(southA, southB, southC, southD,
+                        new Rect(i / 8f, band / 3f, 1f / 8f, 1f / 3f));
+
+                    float north00 = Mathf.Lerp(right0, 24f, v0);
+                    float north01 = Mathf.Lerp(right0, 24f, v1);
+                    float north10 = Mathf.Lerp(right1, 24f, v0);
+                    float north11 = Mathf.Lerp(right1, 24f, v1);
+                    Vector3 northA = GroundPoint(x0, north00);
+                    Vector3 northB = GroundPoint(x0, north01);
+                    Vector3 northC = GroundPoint(x1, north11);
+                    Vector3 northD = GroundPoint(x1, north10);
+                    grass.AddQuad(northA, northB, northC, northD,
+                        new Rect(i / 8f, 6f + band / 3f, 1f / 8f, 1f / 3f));
+                }
 
                 Vector3 lowerLeft0 = new(x0, -.57f, CreekCenterZ(x0) - CreekHalfWidth(x0) * .94f);
                 Vector3 lowerLeft1 = new(x1, -.57f, CreekCenterZ(x1) - CreekHalfWidth(x1) * .94f);
                 Vector3 lowerRight0 = new(x0, -.57f, CreekCenterZ(x0) + CreekHalfWidth(x0) * .94f);
                 Vector3 lowerRight1 = new(x1, -.57f, CreekCenterZ(x1) + CreekHalfWidth(x1) * .94f);
-                creekBed.AddQuad(new Vector3(x0, -.035f, left0), new Vector3(x1, -.035f, left1),
-                    lowerLeft1, lowerLeft0, new Rect(u0 * 9f, 0f, (u1 - u0) * 9f, 1.35f));
-                creekBed.AddQuad(lowerRight0, lowerRight1,
-                    new Vector3(x1, -.035f, right1), new Vector3(x0, -.035f, right0),
-                    new Rect(u0 * 9f, 1.35f, (u1 - u0) * 9f, 1.35f));
+                creekBed.AddQuad(GroundPoint(x0, left0), lowerLeft0,
+                    lowerLeft1, GroundPoint(x1, left1),
+                    new Rect(i / 10f, 0f, 1f / 10f, 1.35f));
+                creekBed.AddQuad(lowerRight0, GroundPoint(x0, right0),
+                    GroundPoint(x1, right1), lowerRight1,
+                    new Rect(i / 10f, 1.35f, 1f / 10f, 1.35f));
             }
         }
 
-        private static void AddPlayableCreek(MeshBuilder water, MeshBuilder creekBed, MeshBuilder details)
+        private static Vector3 GroundedPosition(float x, float z) => new(x, TerrainHeight(x, z), z);
+
+        private static Vector3 GroundPoint(float x, float z) => new(x, TerrainHeight(x, z), z);
+
+        private static float TerrainHeight(float x, float z)
         {
-            const int segments = 44;
+            float radial = Mathf.Clamp01((new Vector2(x, z).magnitude - 4.5f) / 24f);
+            float rolling = Mathf.Sin(x * .19f + z * .07f) * .16f +
+                            Mathf.Cos(z * .17f - x * .05f) * .12f +
+                            Mathf.Sin((x + z) * .11f) * .08f;
+            float edgeRise = radial * radial * .28f;
+            float roadX = Mathf.Sin((z + 5f) * .13f) * 2.0f - 1.4f;
+            float roadBlend = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1.25f, 5.5f, Mathf.Abs(x - roadX)));
+            return edgeRise + rolling * radial * Mathf.Lerp(.24f, 1f, roadBlend);
+        }
+
+        private static float ScenicTerrainHeight(float x, float z)
+        {
+            float distance = Mathf.Max(Mathf.Abs(x), Mathf.Abs(z));
+            float foothill = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(24f, 92f, distance)) * 3.2f;
+            float rolling = Mathf.Sin(x * .083f + z * .041f) * .34f +
+                            Mathf.Cos(z * .074f - x * .029f) * .26f;
+            if (distance <= 25f) return TerrainHeight(x, z);
+            return foothill + rolling * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(22f, 48f, distance));
+        }
+
+        private static void AddMountainPath(MeshBuilder path)
+        {
+            Vector2[] route =
+            {
+                new(-8.8f, -23.5f), new(-10.2f, -18.2f), new(-10.5f, -14.5f),
+                new(-10.5f, -6.0f), new(-7.2f, -4.7f), new(-3.6f, -2.1f),
+                new(-.4f, 1.2f), new(1.1f, 6.4f), new(-.8f, 11.8f),
+                new(-2.4f, 17.2f), new(.2f, 23.5f)
+            };
+
+            List<Vector2> samples = new();
+            const int subdivisions = 7;
+            for (int segment = 0; segment < route.Length - 1; segment++)
+            {
+                Vector2 p0 = route[Mathf.Max(0, segment - 1)];
+                Vector2 p1 = route[segment];
+                Vector2 p2 = route[segment + 1];
+                Vector2 p3 = route[Mathf.Min(route.Length - 1, segment + 2)];
+                for (int step = 0; step < subdivisions; step++)
+                    samples.Add(CatmullRom(p0, p1, p2, p3, step / (float)subdivisions));
+            }
+            samples.Add(route[^1]);
+
+            for (int i = 0; i < samples.Count - 1; i++)
+            {
+                Vector2 point0 = samples[i];
+                Vector2 point1 = samples[i + 1];
+                if ((point0.y > -14.2f && point0.y < -6.3f) ||
+                    (point1.y > -14.2f && point1.y < -6.3f)) continue;
+                Vector2 previous = samples[Mathf.Max(0, i - 1)];
+                Vector2 next = samples[Mathf.Min(samples.Count - 1, i + 2)];
+                Vector2 tangent0 = (point1 - previous).normalized;
+                Vector2 tangent1 = (next - point0).normalized;
+                Vector2 right0 = new(tangent0.y, -tangent0.x);
+                Vector2 right1 = new(tangent1.y, -tangent1.x);
+                float width0 = 1.30f + Mathf.Sin(i * .73f) * .14f + Mathf.Sin(i * 1.91f) * .055f;
+                float width1 = 1.30f + Mathf.Sin((i + 1) * .73f) * .14f + Mathf.Sin((i + 1) * 1.91f) * .055f;
+                Vector2 left0 = point0 - right0 * width0;
+                Vector2 left1 = point1 - right1 * width1;
+                Vector2 edge0 = point0 + right0 * width0;
+                Vector2 edge1 = point1 + right1 * width1;
+                Vector3 a = GroundPoint(left0.x, left0.y) + Vector3.up * .018f;
+                Vector3 b = GroundPoint(left1.x, left1.y) + Vector3.up * .018f;
+                Vector3 c = GroundPoint(edge1.x, edge1.y) + Vector3.up * .018f;
+                Vector3 d = GroundPoint(edge0.x, edge0.y) + Vector3.up * .018f;
+                path.AddQuad(a, b, c, d, new Rect(0f, i * .16f, 1f, .18f));
+            }
+        }
+
+        private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
+        {
+            float t2 = t * t;
+            float t3 = t2 * t;
+            return .5f * ((2f * p1) + (-p0 + p2) * t +
+                (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+                (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+        }
+
+        private static void AddPlayableCreek(MeshBuilder water, MeshBuilder creekBed)
+        {
+            const int segments = 96;
             Vector3[] left = new Vector3[segments + 1];
             Vector3[] right = new Vector3[segments + 1];
             Vector3[] bedLeft = new Vector3[segments + 1];
@@ -914,7 +1061,7 @@ namespace MeixiEcho
             for (int i = 0; i <= segments; i++)
             {
                 float t = i / (float)segments;
-                float x = Mathf.Lerp(-22f, 21f, t);
+                float x = Mathf.Lerp(-24f, 24f, t);
                 float centerZ = CreekCenterZ(x);
                 float halfWidth = CreekHalfWidth(x);
                 // The surface sits below the grass lip, so the creek reads as a
@@ -930,67 +1077,92 @@ namespace MeixiEcho
             {
                 float u0 = i / (float)segments * 9f;
                 float u1 = (i + 1f) / segments * 9f;
-                creekBed.AddQuad(bedLeft[i], bedLeft[i + 1], bedRight[i + 1], bedRight[i],
+                creekBed.AddQuad(bedLeft[i], bedRight[i], bedRight[i + 1], bedLeft[i + 1],
                     new Rect(u0, 0f, u1 - u0, 2.4f));
-                water.AddQuad(left[i], left[i + 1], right[i + 1], right[i],
+                water.AddQuad(left[i], right[i], right[i + 1], left[i + 1],
                     new Rect(u0, 0f, u1 - u0, 1f));
-                Vector3 leftDepth0 = new(left[i].x, -.54f, left[i].z);
-                Vector3 leftDepth1 = new(left[i + 1].x, -.54f, left[i + 1].z);
-                Vector3 rightDepth0 = new(right[i].x, -.54f, right[i].z);
-                Vector3 rightDepth1 = new(right[i + 1].x, -.54f, right[i + 1].z);
-                water.AddQuad(left[i], leftDepth0, leftDepth1, left[i + 1],
-                    new Rect(u0, 0f, u1 - u0, .22f));
-                water.AddQuad(right[i + 1], rightDepth1, rightDepth0, right[i],
-                    new Rect(u0, .78f, u1 - u0, .22f));
             }
 
-            // Generated foam, algae, silt and pebble decals break up the ribbon edge.
-            int[] waterCells = { 1, 5, 7, 9, 10, 11, 12, 14 };
-            // Deliberate 2.30 m spacing keeps transparent cards from stacking over
-            // one another while the alternating banks still read as a continuous wet edge.
-            for (int i = 0; i < 18; i++)
-            {
-                float x = -19.6f + i * 2.30f;
-                float z = CreekCenterZ(x);
-                float side = (i & 1) == 0 ? -1f : 1f;
-                float lateral = side * (1.94f + (i % 3) * .14f);
-                Quaternion rotation = Quaternion.Euler(0f, -8f + Mathf.Sin(i * .81f) * 18f, 0f);
-                AddGroundDecal(details, new Vector3(x, -.028f, z + lateral), rotation,
-                    new Vector2(.72f + (i % 4) * .09f, .40f + (i % 3) * .08f), waterCells[i % waterCells.Length]);
-            }
+            // Shore detail is generated by the creek-bed material and real rock
+            // geometry. Transparent atlas cards looked like floating stickers,
+            // especially from the gameplay camera, so the water ribbon deliberately
+            // contains no independent surface decals.
         }
 
-        private static void AddDetailedStoneBridge(MeshBuilder stone, MeshBuilder timber)
+        private static void AddDetailedStoneBridge(MeshBuilder stone)
         {
             Vector3 center = new(-10.5f, 0f, -10.3f);
-            for (int side = -1; side <= 1; side += 2)
+            const int segments = 15;
+            const float span = 7.55f;
+
+            // A shallow rise at the crown gives the bridge a believable load path and
+            // makes the water visible beneath the deck from either bank.
+            for (int i = 0; i < segments; i++)
             {
-                float endZ = center.z + side * 3.55f;
-                stone.AddBox(new Vector3(center.x, .16f, endZ), new Vector3(3.75f, .48f, 1.08f), Quaternion.identity);
-                for (int step = 0; step < 3; step++)
+                float t = (i + .5f) / segments;
+                float z = Mathf.Lerp(center.z - span * .5f, center.z + span * .5f, t);
+                float deckY = BridgeDeckHeight(t);
+                float slope = BridgeDeckSlope(t);
+                float jitter = Mathf.Sin((i + 2) * 2.37f) * .025f;
+                stone.AddBox(new Vector3(center.x + jitter, deckY, z),
+                    new Vector3(3.36f - (i % 3) * .035f, .25f, span / segments + .035f),
+                    Quaternion.Euler(slope, (i % 2 == 0 ? -1f : 1f) * .45f, 0f));
+
+                // Individual voussoirs under both edges read as a real segmented arch
+                // instead of one continuous slab, while staying in the same mesh.
+                for (int edge = -1; edge <= 1; edge += 2)
                 {
-                    float z = endZ + side * (.72f + step * .48f);
-                    stone.AddBox(new Vector3(center.x, .075f + step * .035f, z),
-                        new Vector3(3.18f - step * .14f, .18f, .62f), Quaternion.identity);
+                    float edgeX = center.x + edge * 1.63f;
+                    float archY = .16f + Mathf.Sin(t * Mathf.PI) * .20f;
+                    stone.AddBox(new Vector3(edgeX, archY, z), new Vector3(.38f, .43f, span / segments + .02f),
+                        Quaternion.Euler(slope, 0f, 0f));
                 }
             }
 
+            // Broad abutments anchor the rising deck into the banks.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float endZ = center.z + side * (span * .5f + .24f);
+                stone.AddBox(new Vector3(center.x, .18f, endZ), new Vector3(3.86f, .48f, .92f), Quaternion.identity);
+                for (int step = 0; step < 4; step++)
+                {
+                    float z = endZ + side * (.60f + step * .42f);
+                    float width = 3.48f - step * .12f;
+                    stone.AddBox(new Vector3(center.x, .07f + step * .035f, z),
+                        new Vector3(width, .17f, .55f), Quaternion.Euler(0f, side * (step - 1) * 1.2f, 0f));
+                }
+            }
+
+            // Stone parapets and capstones replace the former timber rails. Small
+            // offsets keep the blocks from looking mechanically tiled.
             for (int edge = -1; edge <= 1; edge += 2)
             {
-                float x = center.x + edge * 1.56f;
-                for (int post = 0; post < 7; post++)
+                for (int i = 0; i < segments; i++)
                 {
-                    float t = post / 6f;
-                    float z = Mathf.Lerp(center.z - 3.25f, center.z + 3.25f, t);
-                    float arch = .60f + Mathf.Sin(t * Mathf.PI) * .28f;
-                    stone.AddBox(new Vector3(x, arch, z), new Vector3(.28f, .76f, .32f), Quaternion.identity);
+                    float t = (i + .5f) / segments;
+                    float z = Mathf.Lerp(center.z - span * .5f, center.z + span * .5f, t);
+                    float deckY = BridgeDeckHeight(t);
+                    float slope = BridgeDeckSlope(t);
+                    float x = center.x + edge * 1.65f;
+                    stone.AddBox(new Vector3(x, deckY + .30f, z), new Vector3(.34f, .56f, span / segments + .035f),
+                        Quaternion.Euler(slope, 0f, 0f));
+                    stone.AddBox(new Vector3(x, deckY + .61f, z), new Vector3(.49f, .16f, span / segments + .08f),
+                        Quaternion.Euler(slope, 0f, 0f));
                 }
-                timber.AddBox(new Vector3(x, 1.08f, center.z), new Vector3(.16f, .14f, 6.75f), Quaternion.identity);
-                timber.AddBox(new Vector3(x, .77f, center.z), new Vector3(.12f, .10f, 6.55f), Quaternion.identity);
             }
-            stone.AddBox(new Vector3(center.x, -.38f, center.z - 2.75f), new Vector3(3.55f, .44f, .72f), Quaternion.identity);
-            stone.AddBox(new Vector3(center.x, -.38f, center.z + 2.75f), new Vector3(3.55f, .44f, .72f), Quaternion.identity);
+
+            // Dark abutment blocks visually close the underside and prevent a hollow
+            // floating silhouette when the camera looks along the creek.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float z = center.z + side * 2.94f;
+                stone.AddBox(new Vector3(center.x, -.20f, z), new Vector3(3.48f, .56f, .64f), Quaternion.identity);
+            }
         }
+
+        private static float BridgeDeckHeight(float t) => .44f + Mathf.Sin(t * Mathf.PI) * .22f;
+
+        private static float BridgeDeckSlope(float t) => Mathf.Cos(t * Mathf.PI) * -10.3f;
 
         private static float CreekCenterZ(float x) =>
             -11f + Mathf.Sin((x + 15f) * .21f) * 2f + Mathf.Sin((x - 4f) * .075f) * .34f;
@@ -1043,48 +1215,109 @@ namespace MeixiEcho
             GameObject root = new("低成本建筑与溪岸碰撞代理") { isStatic = true };
             root.transform.SetParent(parent, false);
 
-            AddHouseProxy(root.transform, new Vector3(13.7f, 0f, 9.4f), 198f, 1.08f);
-            AddHouseProxy(root.transform, new Vector3(-14.2f, 0f, 13.8f), 154f, .94f);
-            AddHouseProxy(root.transform, new Vector3(18.2f, .38f, 18.8f), 214f, .76f);
-
-            int creekProxyCount = 0;
-            const int creekSegments = 32;
-            const float creekStartX = -21.5f;
-            const float creekEndX = 21.5f;
-            for (int segment = 0; segment < creekSegments; segment++)
-            {
-                float x = Mathf.Lerp(creekStartX, creekEndX, segment / (float)creekSegments);
-                float nextX = Mathf.Lerp(creekStartX, creekEndX, (segment + 1f) / creekSegments);
-                // Preserve a generous opening around the authored stone bridge.
-                if (Mathf.Abs((x + nextX) * .5f + 10.5f) < 3.2f) continue;
-
-                Vector3 from = new(x, 0f, CreekCenterZ(x));
-                Vector3 to = new(nextX, 0f, CreekCenterZ(nextX));
-                Vector3 tangent = (to - from).normalized;
-                Vector3 normal = new(-tangent.z, 0f, tangent.x);
-                Quaternion rotation = Quaternion.LookRotation(tangent, Vector3.up);
-                Vector3 middle = Vector3.Lerp(from, to, .5f);
-                float bankOffset = CreekHalfWidth((x + nextX) * .5f) + .27f;
-                for (int side = -1; side <= 1; side += 2)
-                {
-                    GameObject proxy = new($"溪岸碰撞_{creekProxyCount++:00}") { isStatic = true };
-                    proxy.transform.SetParent(root.transform, false);
-                    proxy.transform.position = middle + normal * (side * bankOffset) + Vector3.up * .14f;
-                    proxy.transform.rotation = rotation;
-                    BoxCollider collider = proxy.AddComponent<BoxCollider>();
-                    collider.size = new Vector3(.42f, .56f, Vector3.Distance(from, to) + .12f);
-                }
-            }
+            AddHouseProxy(root.transform, GroundedPosition(13.7f, 9.4f), 198f, 1.08f);
+            AddHouseProxy(root.transform, GroundedPosition(-14.2f, 13.8f), 154f, .94f);
+            AddHouseProxy(root.transform, GroundedPosition(18.2f, 18.8f), 214f, .76f);
 
             AddVegetationCollisionProxies(root.transform);
             AddRockCollisionProxies(root.transform);
             AddBridgeCollisionProxies(root.transform);
+
+            // This sits just below the authored creek bed. It never changes the
+            // visible walking height, but guarantees that a numerical seam or future
+            // art edit cannot drop the character out of the world.
+            GameObject safetyFloor = new("可玩区地下安全基底") { isStatic = true };
+            safetyFloor.transform.SetParent(root.transform, false);
+            safetyFloor.transform.position = new Vector3(0f, -.78f, 0f);
+            BoxCollider safetyCollider = safetyFloor.AddComponent<BoxCollider>();
+            safetyCollider.size = new Vector3(47.0f, .36f, 47.0f);
 
             AddBoundaryAirWall(root.transform, "南侧栅栏空气墙", new Vector3(0f, 1.6f, -23.55f), new Vector3(47.1f, 3.4f, .72f));
             AddBoundaryAirWall(root.transform, "西侧栅栏空气墙", new Vector3(-23.55f, 1.6f, 0f), new Vector3(.72f, 3.4f, 47.1f));
             AddBoundaryAirWall(root.transform, "东侧栅栏空气墙", new Vector3(23.55f, 1.6f, 0f), new Vector3(.72f, 3.4f, 47.1f));
             AddBoundaryAirWall(root.transform, "北侧栅栏空气墙_左", new Vector3(-13.85f, 1.6f, 23.55f), new Vector3(19.1f, 3.4f, .72f));
             AddBoundaryAirWall(root.transform, "北侧栅栏空气墙_右", new Vector3(13.85f, 1.6f, 23.55f), new Vector3(19.1f, 3.4f, .72f));
+        }
+
+        private static void ValidateGroundCoverage()
+        {
+            Physics.SyncTransforms();
+            int samples = 0;
+            int missing = 0;
+            int safetyFloorHits = 0;
+            RaycastHit[] hits = new RaycastHit[32];
+
+            for (float x = -22f; x <= 22f; x += 2f)
+            {
+                for (float z = -22f; z <= 22f; z += 2f)
+                {
+                    samples++;
+                    int count = Physics.RaycastNonAlloc(new Vector3(x, 7f, z), Vector3.down, hits,
+                        9f, ~0, QueryTriggerInteraction.Ignore);
+                    RaycastHit best = default;
+                    bool found = false;
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (hits[i].collider == null || Vector3.Dot(hits[i].normal, Vector3.up) < .42f) continue;
+                        if (found && hits[i].point.y <= best.point.y) continue;
+                        best = hits[i];
+                        found = true;
+                    }
+
+                    if (!found)
+                    {
+                        missing++;
+                        continue;
+                    }
+                    if (best.collider.name.Contains("地下安全基底", StringComparison.Ordinal)) safetyFloorHits++;
+                }
+            }
+
+            string result = $"[MeixiGroundAudit] samples={samples} missing={missing} safetyFallback={safetyFloorHits}";
+            if (missing > 0 || safetyFloorHits > 0) Debug.LogWarning(result);
+            else Debug.Log(result);
+        }
+
+        private static void ValidateBridgeCoverage()
+        {
+            Physics.SyncTransforms();
+            Vector3 center = new(-10.5f, 0f, -10.3f);
+            const int samples = 31;
+            const float span = 7.55f;
+            int missing = 0;
+            float maxStep = 0f;
+            float previousHeight = 0f;
+            bool hasPrevious = false;
+            RaycastHit[] hits = new RaycastHit[24];
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = (i + .5f) / samples;
+                float z = Mathf.Lerp(center.z - span * .5f, center.z + span * .5f, t);
+                int count = Physics.RaycastNonAlloc(new Vector3(center.x, 3f, z), Vector3.down, hits,
+                    4f, ~0, QueryTriggerInteraction.Ignore);
+                bool found = false;
+                float height = float.MinValue;
+                for (int hit = 0; hit < count; hit++)
+                {
+                    Collider collider = hits[hit].collider;
+                    if (collider == null || !collider.name.StartsWith("石桥桥面碰撞_", StringComparison.Ordinal)) continue;
+                    found = true;
+                    height = Mathf.Max(height, hits[hit].point.y);
+                }
+                if (!found)
+                {
+                    missing++;
+                    continue;
+                }
+                if (hasPrevious) maxStep = Mathf.Max(maxStep, Mathf.Abs(height - previousHeight));
+                previousHeight = height;
+                hasPrevious = true;
+            }
+
+            string result = $"[MeixiBridgeAudit] samples={samples} missing={missing} maxSurfaceStep={maxStep:F3}";
+            if (missing > 0 || maxStep > .13f) Debug.LogWarning(result);
+            else Debug.Log(result);
         }
 
         private static void AddBoundaryAirWall(Transform parent, string name, Vector3 position, Vector3 size)
@@ -1148,7 +1381,9 @@ namespace MeixiEcho
             {
                 float angle = i * 137.5f * Mathf.Deg2Rad;
                 float radius = 20.5f + (i % 4) * 1.15f;
-                Vector3 position = new(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                float x = Mathf.Cos(angle) * radius;
+                float z = Mathf.Sin(angle) * radius;
+                Vector3 position = GroundedPosition(x, z);
                 if (i % 3 == 0)
                 {
                     float treeHeight = 5.2f + (i % 4) * .42f;
@@ -1166,56 +1401,74 @@ namespace MeixiEcho
                 new(-2.8f, 0f, -10.8f), new(-18.5f, 0f, -16.2f), new(-10.0f, 0f, 4.2f)
             };
             for (int i = 0; i < creekBamboo.Length; i++)
-                Capsule($"溪岸竹丛碰撞_{i:00}", creekBamboo[i], .46f, 3.55f);
+                Capsule($"溪岸竹丛碰撞_{i:00}", GroundedPosition(creekBamboo[i].x, creekBamboo[i].z), .46f, 3.55f);
         }
 
         private static void AddRockCollisionProxies(Transform parent)
         {
+            // Most rocks are scenic and deliberately have no collider. Only four
+            // clusters beside traversal routes keep a single cheap rounded proxy.
             Vector3[] anchors =
             {
-                new(-17.8f, 0f, -7.0f), new(-11.6f, 0f, -12.2f), new(-3.8f, 0f, -8.7f),
-                new(7.4f, 0f, -4.8f), new(14.8f, 0f, -1.1f), new(18.5f, 0f, 4.2f),
-                new(-18.7f, 0f, 4.6f), new(4.6f, 0f, 17.8f)
+                new(-17.8f, 0f, -7.0f), new(7.4f, 0f, -4.8f),
+                new(18.5f, 0f, 4.2f), new(4.6f, 0f, 17.8f)
             };
             for (int i = 0; i < anchors.Length; i++)
             {
                 GameObject proxy = new($"自然石组碰撞_{i:00}") { isStatic = true };
                 proxy.transform.SetParent(parent, false);
-                proxy.transform.position = anchors[i];
+                proxy.transform.position = GroundedPosition(anchors[i].x, anchors[i].z);
                 SphereCollider collider = proxy.AddComponent<SphereCollider>();
-                collider.center = new Vector3(-.18f, .24f, .03f);
-                collider.radius = .42f + (i % 3) * .06f;
-                SphereCollider shoulder = proxy.AddComponent<SphereCollider>();
-                shoulder.center = new Vector3(.32f, .18f, -.12f);
-                shoulder.radius = .31f + (i % 2) * .05f;
+                collider.center = new Vector3(.02f, .26f, -.03f);
+                collider.radius = .43f + (i % 3) * .045f;
             }
         }
 
         private static void AddBridgeCollisionProxies(Transform parent)
         {
             Vector3 center = new(-10.5f, 0f, -10.3f);
-            const int segments = 7;
+            const int segments = 15;
+            const float span = 7.55f;
             for (int i = 0; i < segments; i++)
             {
                 float t = (i + .5f) / segments;
-                float z = Mathf.Lerp(center.z - 3.5f, center.z + 3.5f, t);
-                float deckY = .61f + Mathf.Sin(t * Mathf.PI) * .18f;
-                float slope = Mathf.Cos(t * Mathf.PI) * -7.2f;
+                float z = Mathf.Lerp(center.z - span * .5f, center.z + span * .5f, t);
+                float deckY = BridgeDeckHeight(t);
+                float slope = BridgeDeckSlope(t);
                 GameObject deck = new($"石桥桥面碰撞_{i:00}") { isStatic = true };
                 deck.transform.SetParent(parent, false);
                 deck.transform.position = new Vector3(center.x, deckY, z);
                 deck.transform.rotation = Quaternion.Euler(slope, 0f, 0f);
                 BoxCollider collider = deck.AddComponent<BoxCollider>();
-                collider.size = new Vector3(3.08f, .28f, 1.18f);
+                collider.size = new Vector3(3.22f, .30f, span / segments + .08f);
+            }
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                for (int step = 0; step < 4; step++)
+                {
+                    GameObject approach = new($"石桥引桥碰撞_{(side < 0 ? "南" : "北")}_{step:00}") { isStatic = true };
+                    approach.transform.SetParent(parent, false);
+                    approach.transform.position = new Vector3(center.x, .34f - step * .085f,
+                        center.z + side * (span * .5f + .34f + step * .43f));
+                    BoxCollider approachCollider = approach.AddComponent<BoxCollider>();
+                    approachCollider.size = new Vector3(3.30f, .22f, .58f);
+                }
             }
 
             for (int edge = -1; edge <= 1; edge += 2)
             {
-                GameObject rail = new($"石桥护栏碰撞_{(edge < 0 ? "左" : "右")}") { isStatic = true };
-                rail.transform.SetParent(parent, false);
-                rail.transform.position = new Vector3(center.x + edge * 1.55f, 1.14f, center.z);
-                BoxCollider collider = rail.AddComponent<BoxCollider>();
-                collider.size = new Vector3(.22f, 1.05f, 7.2f);
+                for (int i = 0; i < segments; i++)
+                {
+                    float t = (i + .5f) / segments;
+                    float z = Mathf.Lerp(center.z - span * .5f, center.z + span * .5f, t);
+                    GameObject rail = new($"石桥石栏碰撞_{(edge < 0 ? "左" : "右")}_{i:00}") { isStatic = true };
+                    rail.transform.SetParent(parent, false);
+                    rail.transform.position = new Vector3(center.x + edge * 1.65f, BridgeDeckHeight(t) + .30f, z);
+                    rail.transform.rotation = Quaternion.Euler(BridgeDeckSlope(t), 0f, 0f);
+                    BoxCollider collider = rail.AddComponent<BoxCollider>();
+                    collider.size = new Vector3(.30f, .60f, span / segments + .06f);
+                }
             }
         }
 
@@ -1248,18 +1501,28 @@ namespace MeixiEcho
             };
             for (int i = 0; i < positions.Length; i++)
             {
-                Vector3 radial = positions[i];
+                Vector3 position = positions[i];
+                position.y = ScenicTerrainHeight(position.x, position.z);
+                Vector3 radial = position;
                 radial.y = 0f;
                 float faceInwardYaw = Mathf.Atan2(radial.x, radial.z) * Mathf.Rad2Deg;
                 float scale = .54f + (i % 4) * .055f;
                 float yaw = faceInwardYaw + ((i % 3) - 1) * 7f;
-                // Scenic houses are occasionally raised to follow the terraced
-                // skyline. A continuous masonry plinth now connects every base to
-                // ground level, eliminating the obvious floating silhouette.
-                if (positions[i].y > .04f)
-                    stone.AddBox(new Vector3(positions[i].x, positions[i].y * .5f, positions[i].z),
-                        new Vector3(6.92f * scale, positions[i].y + .08f, 5.12f * scale), Quaternion.Euler(0f, yaw, 0f));
-                AddHouse(plaster, stone, timber, roof, glass, decals, positions[i], yaw, scale, i + 2);
+                AddHouse(plaster, stone, timber, roof, glass, decals, position, yaw, scale, i + 2);
+            }
+
+            // A smaller second village ring prevents the horizon from reading as a
+            // repeated line of sixteen identical houses.
+            for (int i = 0; i < 8; i++)
+            {
+                float angle = (i + .45f) / 8f * Mathf.PI * 2f;
+                float radius = 66f + (i % 3) * 5.5f;
+                Vector3 position = new(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+                if (position.z > 34f && Mathf.Abs(position.x) < 9f) position.x += position.x < 0f ? -10f : 10f;
+                position.y = ScenicTerrainHeight(position.x, position.z);
+                float yaw = Mathf.Atan2(position.x, position.z) * Mathf.Rad2Deg + ((i & 1) == 0 ? -6f : 5f);
+                float scale = .36f + (i % 3) * .035f;
+                AddHouse(plaster, stone, timber, roof, glass, decals, position, yaw, scale, 31 + i * 3);
             }
         }
 
@@ -1269,7 +1532,9 @@ namespace MeixiEcho
             {
                 float x = -14f + i * 7f;
                 float z = Mathf.Abs(i - 2) * 1.2f;
-                stone.AddBox(origin + new Vector3(x, .45f + z * .08f, z), new Vector3(6.5f, .9f, .65f), Quaternion.Euler(0f, (i - 2) * 4f, 0f));
+                Vector3 center = origin + new Vector3(x, 0f, z);
+                center.y = TerrainHeight(center.x, center.z) + .38f + z * .06f;
+                stone.AddBox(center, new Vector3(6.5f, .76f, .65f), Quaternion.Euler(0f, (i - 2) * 4f, 0f));
             }
         }
 
@@ -1285,17 +1550,45 @@ namespace MeixiEcho
             System.Random random = new(11831);
             for (int cluster = 0; cluster < anchors.Length; cluster++)
             {
+                Vector3 anchor = anchors[cluster];
+                anchor.y = TerrainHeight(anchor.x, anchor.z) - .04f;
                 int count = 3 + cluster % 3;
                 for (int i = 0; i < count; i++)
                 {
                     float angle = (float)random.NextDouble() * Mathf.PI * 2f;
                     float distance = Mathf.Lerp(.12f, .82f, (float)random.NextDouble());
-                    Vector3 center = anchors[cluster] + new Vector3(Mathf.Cos(angle) * distance,
+                    Vector3 center = anchor + new Vector3(Mathf.Cos(angle) * distance,
                         Mathf.Lerp(.10f, .24f, (float)random.NextDouble()), Mathf.Sin(angle) * distance);
                     Vector3 size = new(Mathf.Lerp(.34f, .92f, (float)random.NextDouble()),
                         Mathf.Lerp(.22f, .52f, (float)random.NextDouble()),
                         Mathf.Lerp(.30f, .78f, (float)random.NextDouble()));
                     stone.AddRock(center, size, 11831 + cluster * 101 + i * 17);
+                }
+            }
+        }
+
+        private static void AddCreekBoulders(MeshBuilder stone, List<Vector4> flowObstacles)
+        {
+            // These stones break the stream silhouette and feed obstacle position and
+            // radius into the water shader. They are visual flow obstacles, not a row
+            // of gameplay blockers, so no collider is generated for them.
+            float[] xPositions = { -19.2f, -15.7f, -7.1f, -2.2f, 4.9f, 10.8f, 17.3f };
+            for (int i = 0; i < xPositions.Length; i++)
+            {
+                float x = xPositions[i];
+                float side = (i & 1) == 0 ? -.30f : .34f;
+                float z = CreekCenterZ(x) + CreekHalfWidth(x) * side;
+                float radius = Mathf.Lerp(.30f, .58f, (i * 37 % 11) / 10f);
+                Vector3 size = new(radius * 2.05f, radius * (1.18f + (i % 3) * .16f), radius * 1.72f);
+                Vector3 center = new(x, -.49f + size.y * .43f, z);
+                stone.AddRock(center, size, 22103 + i * 193);
+                flowObstacles.Add(new Vector4(x, z, radius * .86f, .72f + (i % 3) * .10f));
+
+                if ((i & 1) == 0)
+                {
+                    Vector3 pebbleSize = Vector3.Scale(size, new Vector3(.43f, .36f, .48f));
+                    Vector3 pebbleCenter = center + new Vector3(radius * .72f, -.12f, radius * .56f);
+                    stone.AddRock(pebbleCenter, pebbleSize, 33107 + i * 157);
                 }
             }
         }
@@ -1308,7 +1601,9 @@ namespace MeixiEcho
             {
                 float angle = i * 137.5f * Mathf.Deg2Rad;
                 float radius = 20.5f + (i % 4) * 1.15f;
-                Vector3 position = new(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                float x = Mathf.Cos(angle) * radius;
+                float z = Mathf.Sin(angle) * radius;
+                Vector3 position = GroundedPosition(x, z);
                 if (i % 3 == 0)
                 {
                     float height = 5.2f + (i % 4) * .42f;
@@ -1326,25 +1621,27 @@ namespace MeixiEcho
                 new(-2.8f, 0f, -10.8f), new(-18.5f, 0f, -16.2f), new(-10.0f, 0f, 4.2f)
             };
             for (int i = 0; i < creekBamboo.Length; i++)
-                AddBambooStand(timber, foliage, creekBamboo[i], 4, 9001 + i * 67);
+                AddBambooStand(timber, foliage,
+                    GroundedPosition(creekBamboo[i].x, creekBamboo[i].z), 4, 9001 + i * 67);
 
             System.Random random = new(5279);
             int accepted = 0;
-            for (int attempt = 0; attempt < 2800 && accepted < 820; attempt++)
+            for (int attempt = 0; attempt < 5200 && accepted < 1450; attempt++)
             {
                 float x = Mathf.Lerp(-22.5f, 22.5f, (float)random.NextDouble());
                 float z = Mathf.Lerp(-22.5f, 22.5f, (float)random.NextDouble());
-                Vector3 position = new(x, .055f, z);
+                Vector3 position = new(x, TerrainHeight(x, z) + .055f, z);
                 if (!GrassPositionIsClear(position)) continue;
 
                 float angle = (float)random.NextDouble() * 180f;
-                float height = Mathf.Lerp(.16f, .34f, (float)random.NextDouble());
-                float width = Mathf.Lerp(.075f, .135f, (float)random.NextDouble());
+                float moisture = 1f - Mathf.Clamp01(Mathf.Abs(z - CreekCenterZ(x)) / 8f);
+                float height = Mathf.Lerp(.13f, .37f, (float)random.NextDouble()) * Mathf.Lerp(.86f, 1.18f, moisture);
+                float width = Mathf.Lerp(.050f, .105f, (float)random.NextDouble());
                 AddGrassBlade(grassBlades, position, angle, width, height);
-                if ((accepted & 1) == 0)
+                if (accepted % 3 != 0)
                     AddGrassBlade(grassBlades, position + new Vector3(.10f, 0f, -.06f), angle + 67f,
                         width * .78f, height * .84f);
-                if (accepted % 5 == 0)
+                if (accepted % 4 == 0)
                     AddGrassBlade(grassBlades, position + new Vector3(-.08f, .002f, .09f), angle - 51f,
                         width * .64f, height * .72f);
                 accepted++;
@@ -1431,29 +1728,27 @@ namespace MeixiEcho
         private static void AddOuterLandscape(MeshBuilder outerGrass, MeshBuilder mountains, MeshBuilder stone,
             MeshBuilder treeBark, MeshBuilder foliage, MeshBuilder water, MeshBuilder grassPatches)
         {
-            // Four non-overlapping ground strips form a complete ring outside the
-            // playable 48 x 48 metre square. Their top face uses the exact same
-            // HumidGrassGround texture as the playable grass.
-            outerGrass.AddBox(new Vector3(0f, -1.35f, 58f), new Vector3(140f, 2.7f, 68f), Quaternion.identity);
-            outerGrass.AddBox(new Vector3(0f, -1.35f, -58f), new Vector3(140f, 2.7f, 68f), Quaternion.identity);
-            outerGrass.AddBox(new Vector3(58f, -1.35f, 0f), new Vector3(68f, 2.7f, 48f), Quaternion.identity);
-            outerGrass.AddBox(new Vector3(-58f, -1.35f, 0f), new Vector3(68f, 2.7f, 48f), Quaternion.identity);
-
-            for (int direction = 0; direction < 4; direction++)
+            // A continuous rolling height field replaces the former grass boxes and
+            // stepped platforms. It starts exactly at the playable boundary.
+            const int outerSegments = 48;
+            const float outerExtent = 96f;
+            for (int xIndex = 0; xIndex < outerSegments; xIndex++)
             {
-                Quaternion turn = Quaternion.Euler(0f, direction * 90f, 0f);
-                for (int side = -1; side <= 1; side += 2)
+                float x0 = Mathf.Lerp(-outerExtent, outerExtent, xIndex / (float)outerSegments);
+                float x1 = Mathf.Lerp(-outerExtent, outerExtent, (xIndex + 1f) / outerSegments);
+                for (int zIndex = 0; zIndex < outerSegments; zIndex++)
                 {
-                    for (int tier = 0; tier < 5; tier++)
-                    {
-                        float x = side * (29f + tier * 4.4f);
-                        float z = 31f + tier * 9.2f;
-                        float y = tier * .92f;
-                        Quaternion terraceRotation = turn * Quaternion.Euler(0f, side * (4f + tier), 0f);
-                        outerGrass.AddBox(turn * new Vector3(x, y - .45f, z), new Vector3(17f, 1.5f, 11f), terraceRotation);
-                        stone.AddBox(turn * new Vector3(x - side * 8.0f, y + .18f, z - 4.9f),
-                            new Vector3(.65f, 1.15f, 10.2f), terraceRotation);
-                    }
+                    float z0 = Mathf.Lerp(-outerExtent, outerExtent, zIndex / (float)outerSegments);
+                    float z1 = Mathf.Lerp(-outerExtent, outerExtent, (zIndex + 1f) / outerSegments);
+                    float centerX = (x0 + x1) * .5f;
+                    float centerZ = (z0 + z1) * .5f;
+                    if (Mathf.Abs(centerX) < 24f && Mathf.Abs(centerZ) < 24f) continue;
+                    Vector3 a = new(x0, ScenicTerrainHeight(x0, z0), z0);
+                    Vector3 b = new(x0, ScenicTerrainHeight(x0, z1), z1);
+                    Vector3 c = new(x1, ScenicTerrainHeight(x1, z1), z1);
+                    Vector3 d = new(x1, ScenicTerrainHeight(x1, z0), z0);
+                    outerGrass.AddQuad(a, b, c, d,
+                        new Rect(xIndex / 4f, zIndex / 4f, .25f, .25f));
                 }
             }
 
@@ -1461,45 +1756,50 @@ namespace MeixiEcho
             {
                 float angle = i / 16f * Mathf.PI * 2f;
                 float radius = 74f + (i % 4) * 7.5f;
-                Vector3 center = new(Mathf.Sin(angle) * radius, 5f + (i % 5) * .82f, Mathf.Cos(angle) * radius);
+                float x = Mathf.Sin(angle) * radius;
+                float z = Mathf.Cos(angle) * radius;
+                Vector3 center = new(x, ScenicTerrainHeight(x, z) + 4.2f + (i % 5) * .62f, z);
                 mountains.AddMountain(center, 19f + (i % 4) * 2.7f, 17f + ((i + 1) % 4) * 2.2f,
                     18f + (i % 5) * 1.85f, 41 + i * 31);
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = (i + .35f) / 12f * Mathf.PI * 2f;
+                float radius = 53f + (i % 3) * 4.5f;
+                float x = Mathf.Sin(angle) * radius;
+                float z = Mathf.Cos(angle) * radius;
+                Vector3 center = new(x, ScenicTerrainHeight(x, z) + 2.0f + (i % 3) * .34f, z);
+                mountains.AddMountain(center, 23f + (i % 3) * 2.4f, 12.5f + (i % 4) * 1.8f,
+                    9.5f + (i % 4) * 1.15f, 971 + i * 43);
             }
 
             water.AddQuad(new Vector3(-4.8f, .02f, 38f), new Vector3(-4.8f, .02f, 101f),
                 new Vector3(4.8f, .02f, 101f), new Vector3(4.8f, .02f, 38f), new Rect(0f, 0f, 5f, 24f));
 
             System.Random random = new(1949);
-            for (int i = 0; i < 40; i++)
+            for (int i = 0; i < 72; i++)
             {
                 float angle = (float)random.NextDouble() * Mathf.PI * 2f;
                 float radius = Mathf.Lerp(32f, 72f, (float)random.NextDouble());
-                // Outer ground strips have a top surface at y=0. Previous sine-based
-                // Y offsets lifted entire trees into the air independently of terrain.
-                Vector3 position = new(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+                float x = Mathf.Sin(angle) * radius;
+                float z = Mathf.Cos(angle) * radius;
+                Vector3 position = new(x, ScenicTerrainHeight(x, z), z);
                 for (int attempt = 0; attempt < 7 && !ScenicTreePositionIsClear(position); attempt++)
                 {
                     angle += .23f + attempt * .041f;
                     radius += attempt % 2 == 0 ? 1.35f : -0.72f;
-                    position = new Vector3(Mathf.Sin(angle) * radius, 0f, Mathf.Cos(angle) * radius);
+                    x = Mathf.Sin(angle) * radius;
+                    z = Mathf.Cos(angle) * radius;
+                    position = new Vector3(x, ScenicTerrainHeight(x, z), z);
                 }
                 float height = Mathf.Lerp(3.6f, 7.4f, (float)random.NextDouble());
                 float crown = height * Mathf.Lerp(.24f, .34f, (float)random.NextDouble());
                 AddNaturalTree(treeBark, foliage, position, height, crown, 1949 + i * 37);
             }
 
-            for (int direction = 0; direction < 4; direction++)
-            {
-                Quaternion turn = Quaternion.Euler(0f, direction * 90f, 0f);
-                for (int i = 0; i < 8; i++)
-                {
-                    Vector3 center = turn * new Vector3(-20f + i * 5.7f, .035f, 27f + Mathf.Sin(i * .88f) * 3.2f);
-                    Vector3 right = turn * Vector3.right * .85f;
-                    Vector3 forward = turn * Vector3.forward * .62f;
-                    grassPatches.AddQuad(center - right - forward, center - right + forward,
-                        center + right + forward, center + right - forward, new Rect(0f, 0f, 1f, 1f));
-                }
-            }
+            // No separate grass cards are emitted: they previously shifted colour
+            // against the underlying ground when fog and directional light changed.
         }
 
         private static bool ScenicTreePositionIsClear(Vector3 position)
@@ -1516,6 +1816,14 @@ namespace MeixiEcho
             };
             foreach (Vector2 house in houses)
                 if (Vector2.SqrMagnitude(point - house) < 43f) return false;
+            for (int i = 0; i < 8; i++)
+            {
+                float angle = (i + .45f) / 8f * Mathf.PI * 2f;
+                float radius = 66f + (i % 3) * 5.5f;
+                Vector2 house = new(Mathf.Sin(angle) * radius, Mathf.Cos(angle) * radius);
+                if (house.y > 34f && Mathf.Abs(house.x) < 9f) house.x += house.x < 0f ? -10f : 10f;
+                if (Vector2.SqrMagnitude(point - house) < 32f) return false;
+            }
             return true;
         }
 
@@ -1545,11 +1853,11 @@ namespace MeixiEcho
                     Quaternion.FromToRotation(Vector3.up, direction.normalized), 7);
             }
 
-            const int branchCount = 12;
+            const int branchCount = 14;
             for (int branch = 0; branch < branchCount; branch++)
             {
                 float angle = branch / (float)branchCount * Mathf.PI * 2f + seed * .071f;
-                float radial = crown * Mathf.Lerp(.42f, .72f, (float)random.NextDouble());
+                float radial = crown * Mathf.Lerp(.48f, .88f, (float)random.NextDouble());
                 float branchY = height * Mathf.Lerp(.61f, .82f, (float)random.NextDouble());
                 Vector3 start = basePosition + Vector3.up * height * Mathf.Lerp(.38f, .53f, (float)random.NextDouble());
                 Vector3 end = basePosition + new Vector3(Mathf.Cos(angle) * radial, branchY,
@@ -1558,17 +1866,28 @@ namespace MeixiEcho
                 timber.AddCylinder((start + end) * .5f, crown * Mathf.Lerp(.045f, .068f, (float)random.NextDouble()),
                     direction.magnitude, Quaternion.FromToRotation(Vector3.up, direction.normalized), 9);
 
-                AddOliveLeafCluster(foliage, end + Vector3.up * crown * .06f,
-                    crown * Mathf.Lerp(.72f, .94f, (float)random.NextDouble()), seed + branch * 97);
+                Vector3 twigDirection = new(Mathf.Cos(angle + Mathf.Lerp(-.48f, .48f, (float)random.NextDouble())),
+                    Mathf.Lerp(.24f, .52f, (float)random.NextDouble()),
+                    Mathf.Sin(angle + Mathf.Lerp(-.48f, .48f, (float)random.NextDouble())));
+                Vector3 twigEnd = end + twigDirection.normalized * crown * Mathf.Lerp(.25f, .46f, (float)random.NextDouble());
+                Vector3 twig = twigEnd - end;
+                timber.AddCylinder((end + twigEnd) * .5f, crown * .026f, twig.magnitude,
+                    Quaternion.FromToRotation(Vector3.up, twig.normalized), 7);
+
+                AddOliveLeafCluster(foliage, end + Vector3.up * crown * .05f,
+                    crown * Mathf.Lerp(.57f, .68f, (float)random.NextDouble()), seed + branch * 97);
+                if ((branch & 1) == 0)
+                    AddOliveLeafCluster(foliage, twigEnd,
+                        crown * Mathf.Lerp(.38f, .45f, (float)random.NextDouble()), seed + branch * 131 + 41);
             }
 
-            AddOliveLeafCluster(foliage, basePosition + Vector3.up * height * .87f, crown * 1.02f, seed + 701);
+            AddOliveLeafCluster(foliage, basePosition + Vector3.up * height * .89f, crown * .92f, seed + 701);
         }
 
         private static void AddOliveLeafCluster(MeshBuilder foliage, Vector3 center, float radius, int seed)
         {
             System.Random random = new(seed);
-            const int leaves = 14;
+            const int leaves = 16;
             for (int i = 0; i < leaves; i++)
             {
                 float angle = i / (float)leaves * Mathf.PI * 2f + seed * .017f;
@@ -1617,9 +1936,31 @@ namespace MeixiEcho
 
         private static Material CreateAtlasMaterial(string name, Texture texture, Vector2 offset, Color tint, float smoothness)
         {
-            Material material = CreateTexturedMaterial(name, texture, tint, smoothness, new Vector2(.5f, .5f));
-            material.mainTextureOffset = offset;
-            if (material.HasProperty("_BaseMap")) material.SetTextureOffset("_BaseMap", offset);
+            Shader architectureShader = Shader.Find("MeixiEcho/Realistic Architecture");
+            if (architectureShader == null)
+            {
+                Material fallback = CreateTexturedMaterial(name, texture, tint, smoothness, new Vector2(.5f, .5f));
+                fallback.mainTextureOffset = offset;
+                if (fallback.HasProperty("_BaseMap")) fallback.SetTextureOffset("_BaseMap", offset);
+                return fallback;
+            }
+
+            Material material = new(architectureShader) { name = name, enableInstancing = true };
+            if (texture != null)
+            {
+                texture.filterMode = FilterMode.Trilinear;
+                texture.anisoLevel = 8;
+                texture.mipMapBias = .05f;
+                material.SetTexture("_BaseMap", texture);
+                material.SetTextureScale("_BaseMap", new Vector2(.5f, .5f));
+                material.SetTextureOffset("_BaseMap", offset);
+            }
+            float materialKind = offset.y > .25f ? (offset.x > .25f ? 1f : 0f) : (offset.x > .25f ? 2f : 3f);
+            material.SetColor("_BaseColor", tint);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_MaterialKind", materialKind);
+            material.SetFloat("_MicroStrength", materialKind == 2f ? .26f : materialKind == 3f ? .42f : .34f);
+            material.SetFloat("_Weathering", materialKind == 0f ? .68f : .54f);
             return material;
         }
 
@@ -1642,6 +1983,50 @@ namespace MeixiEcho
             return material;
         }
 
+        private static Material CreateGroundMaterial(string name, Texture texture, Color color, float smoothness,
+            Vector2 scale, float wetness)
+        {
+            Shader groundShader = Shader.Find("MeixiEcho/Realistic Ground");
+            if (groundShader == null) return CreateTexturedMaterial(name, texture, color, smoothness, scale);
+
+            Material material = new(groundShader) { name = name, enableInstancing = true };
+            if (texture != null)
+            {
+                texture.filterMode = FilterMode.Trilinear;
+                texture.anisoLevel = 8;
+                texture.mipMapBias = .08f;
+                material.SetTexture("_BaseMap", texture);
+                material.SetTextureScale("_BaseMap", scale);
+            }
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Wetness", wetness);
+            material.SetFloat("_NormalStrength", .62f);
+            material.SetFloat("_MacroVariation", .24f);
+            return material;
+        }
+
+        private static Material CreateRockMaterial(string name, Texture texture, Color color, float smoothness, float wetness)
+        {
+            Shader rockShader = Shader.Find("MeixiEcho/Realistic Rock");
+            if (rockShader == null) return CreateTexturedMaterial(name, texture, color, smoothness, new Vector2(1.8f, 1.8f));
+
+            Material material = new(rockShader) { name = name, enableInstancing = true };
+            if (texture != null)
+            {
+                texture.filterMode = FilterMode.Trilinear;
+                texture.anisoLevel = 8;
+                texture.mipMapBias = .06f;
+                material.SetTexture("_BaseMap", texture);
+            }
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Wetness", wetness);
+            material.SetFloat("_TextureScale", 1.35f);
+            material.SetFloat("_MossStrength", .36f);
+            return material;
+        }
+
         private static Material CreateMaterial(string name, Color color, float smoothness)
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
@@ -1655,19 +2040,21 @@ namespace MeixiEcho
 
         private static Material CreateDoubleSidedFoliageMaterial(string name, Texture texture, Color color, float smoothness)
         {
-            if (texture != null)
+            Shader foliageShader = Shader.Find("MeixiEcho/Realistic Foliage");
+            if (foliageShader != null)
             {
-                Shader foliageShader = Shader.Find("MeixiEcho/Realistic Foliage");
-                if (foliageShader != null)
-                {
-                    Material foliageMaterial = new(foliageShader) { name = name, enableInstancing = true };
+                Material foliageMaterial = new(foliageShader) { name = name, enableInstancing = true };
+                if (texture != null)
                     foliageMaterial.SetTexture("_BaseMap", texture);
-                    foliageMaterial.SetColor("_BaseColor", color);
-                    foliageMaterial.SetFloat("_Cutoff", .38f);
-                    foliageMaterial.renderQueue = (int)RenderQueue.AlphaTest;
-                    foliageMaterial.doubleSidedGI = true;
-                    return foliageMaterial;
-                }
+                foliageMaterial.SetColor("_BaseColor", color);
+                foliageMaterial.SetFloat("_Cutoff", texture != null ? .38f : .08f);
+                foliageMaterial.SetFloat("_WindStrength", texture != null ? .075f : .16f);
+                foliageMaterial.SetFloat("_Translucency", texture != null ? .42f : .58f);
+                foliageMaterial.SetFloat("_ColorVariation", texture != null ? .18f : .28f);
+                foliageMaterial.SetFloat("_Smoothness", smoothness);
+                foliageMaterial.renderQueue = (int)RenderQueue.AlphaTest;
+                foliageMaterial.doubleSidedGI = true;
+                return foliageMaterial;
             }
 
             Material material = CreateTexturedMaterial(name, texture, color, smoothness, Vector2.one);
@@ -1715,11 +2102,15 @@ namespace MeixiEcho
             if (creekShader != null)
             {
                 Material creekMaterial = new(creekShader) { name = "梅溪连续浅水", enableInstancing = true };
-                creekMaterial.SetColor("_ShallowColor", new Color(.16f, .46f, .45f, .44f));
-                creekMaterial.SetColor("_DeepColor", new Color(.025f, .145f, .18f, .56f));
-                creekMaterial.SetColor("_FoamColor", new Color(.76f, .90f, .84f, .42f));
-                creekMaterial.SetFloat("_FlowSpeed", .44f);
-                creekMaterial.SetFloat("_WaveStrength", .024f);
+                creekMaterial.SetColor("_ShallowColor", new Color(.11f, .34f, .33f, .34f));
+                creekMaterial.SetColor("_DeepColor", new Color(.018f, .11f, .145f, .49f));
+                creekMaterial.SetColor("_FoamColor", new Color(.72f, .86f, .81f, .28f));
+                creekMaterial.SetFloat("_FlowSpeed", .38f);
+                creekMaterial.SetFloat("_WaveStrength", .016f);
+                creekMaterial.SetFloat("_RefractionStrength", .012f);
+                creekMaterial.SetFloat("_Clarity", .82f);
+                creekMaterial.SetFloat("_FoamWidth", .16f);
+                creekMaterial.SetFloat("_CausticsStrength", .10f);
                 creekMaterial.renderQueue = (int)RenderQueue.Transparent - 4;
                 return creekMaterial;
             }
@@ -1737,17 +2128,28 @@ namespace MeixiEcho
             return material;
         }
 
-        private static void CreateMeshObject(Transform parent, string name, MeshBuilder builder, Material material,
-            bool castShadows, bool receiveShadows)
+        private static GameObject CreateMeshObject(Transform parent, string name, MeshBuilder builder, Material material,
+            bool castShadows, bool receiveShadows, bool addMeshCollider = false)
         {
-            if (builder.VertexCount == 0) return;
+            if (builder.VertexCount == 0) return null;
             GameObject gameObject = new(name) { isStatic = true };
             gameObject.transform.SetParent(parent, false);
-            gameObject.AddComponent<MeshFilter>().sharedMesh = builder.Build(name);
+            Mesh mesh = builder.Build(name);
+            gameObject.AddComponent<MeshFilter>().sharedMesh = mesh;
             MeshRenderer renderer = gameObject.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
             renderer.receiveShadows = receiveShadows;
+            if (addMeshCollider)
+            {
+                MeshCollider collider = gameObject.AddComponent<MeshCollider>();
+                collider.cookingOptions = MeshColliderCookingOptions.CookForFasterSimulation |
+                                          MeshColliderCookingOptions.EnableMeshCleaning |
+                                          MeshColliderCookingOptions.WeldColocatedVertices;
+                collider.sharedMesh = mesh;
+                collider.convex = false;
+            }
+            return gameObject;
         }
 
         private static Bounds CalculateBounds(GameObject root)
@@ -1877,11 +2279,13 @@ namespace MeixiEcho
 
             public void AddRock(Vector3 center, Vector3 size, int seed)
             {
-                const int longitude = 12;
-                const int latitude = 6;
-                System.Random random = new(seed);
-                Vector3[,] points = new Vector3[latitude + 1, longitude];
-                for (int y = 0; y <= latitude; y++)
+                const int longitude = 18;
+                const int latitude = 9;
+                Vector3[,] points = new Vector3[latitude - 1, longitude];
+                Vector3[,] rockNormals = new Vector3[latitude - 1, longitude];
+                Quaternion irregularRotation = Quaternion.Euler(seed % 13 - 6f, seed * .37f % 360f, seed % 17 - 8f);
+
+                for (int y = 1; y < latitude; y++)
                 {
                     float v = y / (float)latitude;
                     float vertical = (v - .5f) * Mathf.PI;
@@ -1889,23 +2293,44 @@ namespace MeixiEcho
                     {
                         float u = x / (float)longitude;
                         float horizontal = u * Mathf.PI * 2f;
-                        float noise = 1f + Mathf.Sin(horizontal * 3f + seed * .17f) * .08f +
-                                      Mathf.Lerp(-.08f, .08f, (float)random.NextDouble());
                         Vector3 unit = new(Mathf.Cos(vertical) * Mathf.Cos(horizontal), Mathf.Sin(vertical),
                             Mathf.Cos(vertical) * Mathf.Sin(horizontal));
-                        unit.x *= noise;
-                        unit.z *= 1f + Mathf.Sin(horizontal * 5f + vertical * 2f) * .06f;
-                        points[y, x] = center + Vector3.Scale(unit, size * .5f);
+                        Vector3 rotated = irregularRotation * unit;
+                        float broad = Mathf.Sin(rotated.x * 4.7f + rotated.y * 3.1f + seed * .071f) * .105f;
+                        float cross = Mathf.Sin(rotated.z * 8.3f - rotated.x * 5.2f + seed * .113f) * .065f;
+                        float facets = Mathf.Round((1f + broad + cross) * 18f) / 18f;
+                        float topCompression = Mathf.Lerp(.93f, 1.04f, Mathf.SmoothStep(0f, 1f, v));
+                        Vector3 shaped = rotated * facets;
+                        shaped.y *= topCompression;
+                        shaped.x += shaped.y * Mathf.Sin(seed * .31f) * .08f;
+                        shaped.z += shaped.y * Mathf.Cos(seed * .23f) * .065f;
+                        points[y - 1, x] = center + Vector3.Scale(shaped, size * .5f);
+                        rockNormals[y - 1, x] = Vector3.Scale(rotated,
+                            new Vector3(1f / Mathf.Max(.01f, size.x), 1f / Mathf.Max(.01f, size.y),
+                                1f / Mathf.Max(.01f, size.z))).normalized;
                     }
                 }
-                for (int y = 0; y < latitude; y++)
+
+                for (int y = 0; y < latitude - 2; y++)
                 {
                     for (int x = 0; x < longitude; x++)
                     {
                         int next = (x + 1) % longitude;
-                        AddQuad(points[y, x], points[y + 1, x], points[y + 1, next], points[y, next],
-                            new Rect(x / (float)longitude, y / (float)latitude, 1f / longitude, 1f / latitude));
+                        AddSmoothQuad(points[y, x], points[y + 1, x], points[y + 1, next], points[y, next],
+                            rockNormals[y, x], rockNormals[y + 1, x], rockNormals[y + 1, next], rockNormals[y, next],
+                            new Rect(x / (float)longitude, (y + 1f) / latitude, 1f / longitude, 1f / latitude));
                     }
+                }
+
+                Vector3 bottom = center + irregularRotation * Vector3.down * size.y * .46f;
+                Vector3 top = center + irregularRotation * Vector3.up * size.y * .46f;
+                for (int x = 0; x < longitude; x++)
+                {
+                    int next = (x + 1) % longitude;
+                    AddSmoothTriangle(bottom, points[0, next], points[0, x], Vector3.down,
+                        rockNormals[0, next], rockNormals[0, x]);
+                    AddSmoothTriangle(points[latitude - 2, x], points[latitude - 2, next], top,
+                        rockNormals[latitude - 2, x], rockNormals[latitude - 2, next], Vector3.up);
                 }
             }
 

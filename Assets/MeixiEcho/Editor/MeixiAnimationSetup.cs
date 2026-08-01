@@ -22,8 +22,12 @@ namespace MeixiEcho.Editor
         private const string RealisticCastFolder = "Assets/MeixiEcho/Resources/Models/Characters/RealisticCast";
         private const string MotionModel = "Assets/MeixiEcho/Resources/Animations/KayKitHumanoidMotions.fbx";
         private const string AnimationFolder = "Assets/MeixiEcho/Resources/Animations";
+        private const string StarterLocomotionFolder = AnimationFolder + "/StarterLocomotion";
+        private const string StarterIdleModel = StarterLocomotionFolder + "/Stand--Idle.anim.fbx";
+        private const string StarterWalkModel = StarterLocomotionFolder + "/Locomotion--Walk_N.anim.fbx";
+        private const string StarterRunModel = StarterLocomotionFolder + "/Locomotion--Run_N.anim.fbx";
         private const string PlayerController = AnimationFolder + "/LinMoCombat.controller";
-        private const string ControllerVersion = "MeixiEcho.LinMoCombat.v6-continuous-arm-swing";
+        private const string ControllerVersion = "MeixiEcho.LinMoCombat.v12-hybrid-compatible-locomotion";
 
         static MeixiAnimationSetup()
         {
@@ -48,7 +52,10 @@ namespace MeixiEcho.Editor
             if (EditorApplication.isCompiling || EditorApplication.isUpdating ||
                 EditorApplication.isPlayingOrWillChangePlaymode) return;
             if (AssetDatabase.LoadAssetAtPath<GameObject>(LinMoModel) == null ||
-                AssetDatabase.LoadAssetAtPath<GameObject>(MotionModel) == null) return;
+                AssetDatabase.LoadAssetAtPath<GameObject>(MotionModel) == null ||
+                AssetDatabase.LoadAssetAtPath<GameObject>(StarterIdleModel) == null ||
+                AssetDatabase.LoadAssetAtPath<GameObject>(StarterWalkModel) == null ||
+                AssetDatabase.LoadAssetAtPath<GameObject>(StarterRunModel) == null) return;
 
             EnsureFolder(AnimationFolder);
             ConfigureHumanoid(LinMoModel, false);
@@ -60,16 +67,23 @@ namespace MeixiEcho.Editor
             ConfigureRealisticCastTextures();
             ConfigureHumanoid(MotionModel, true);
             ConfigureClipLoops(MotionModel);
+            ConfigureStarterLocomotion(StarterIdleModel);
+            ConfigureStarterLocomotion(StarterWalkModel);
+            ConfigureStarterLocomotion(StarterRunModel);
 
             Dictionary<string, AnimationClip> playerClips = LoadClips(MotionModel);
+            AnimationClip starterIdle = LoadPrimaryClip(StarterIdleModel);
+            AnimationClip starterWalk = LoadPrimaryClip(StarterWalkModel);
+            AnimationClip starterRun = LoadPrimaryClip(StarterRunModel);
 
-            if (playerClips.Count == 0)
+            if (playerClips.Count == 0 || starterIdle == null || starterWalk == null || starterRun == null)
             {
                 Debug.LogWarning("梅溪回响：第一章动作源中没有找到动画片段。");
                 return;
             }
 
-            if (forceControllerRebuild || !ControllerIsCurrent()) BuildPlayerController(playerClips);
+            if (forceControllerRebuild || !ControllerIsCurrent())
+                BuildPlayerController(playerClips, starterIdle, starterWalk, starterRun);
             AssetDatabase.SaveAssets();
         }
 
@@ -80,7 +94,7 @@ namespace MeixiEcho.Editor
             if (controller == null || importer == null || importer.userData != ControllerVersion) return false;
             if (controller.layers == null || controller.layers.Length == 0 || controller.parameters == null) return false;
 
-            string[] required = { "Speed", "Grounded", "Light", "Heavy", "Dodge", "Hit", "Victory" };
+            string[] required = { "Speed", "GaitPhase", "Grounded", "Light", "Heavy", "Dodge", "Hit", "Victory" };
             return required.All(name => controller.parameters.Any(parameter => parameter.name == name));
         }
 
@@ -91,6 +105,13 @@ namespace MeixiEcho.Editor
                 .Where(clip => !clip.name.StartsWith("__preview__", StringComparison.OrdinalIgnoreCase))
                 .GroupBy(clip => clip.name)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static AnimationClip LoadPrimaryClip(string path)
+        {
+            return AssetDatabase.LoadAllAssetsAtPath(path)
+                .OfType<AnimationClip>()
+                .FirstOrDefault(clip => !clip.name.StartsWith("__preview__", StringComparison.OrdinalIgnoreCase));
         }
 
         private static void ConfigureHumanoid(string path, bool importAnimations)
@@ -133,6 +154,30 @@ namespace MeixiEcho.Editor
             importer.SaveAndReimport();
         }
 
+        private static void ConfigureStarterLocomotion(string path)
+        {
+            ConfigureHumanoid(path, true);
+            if (AssetImporter.GetAtPath(path) is not ModelImporter importer) return;
+            ModelImporterClipAnimation[] clips = importer.clipAnimations.Length > 0
+                ? importer.clipAnimations
+                : importer.defaultClipAnimations;
+            bool changed = false;
+            foreach (ModelImporterClipAnimation clip in clips)
+            {
+                if (clip.loopTime && clip.loopPose && clip.keepOriginalOrientation &&
+                    clip.keepOriginalPositionY && clip.keepOriginalPositionXZ) continue;
+                clip.loopTime = true;
+                clip.loopPose = true;
+                clip.keepOriginalOrientation = true;
+                clip.keepOriginalPositionY = true;
+                clip.keepOriginalPositionXZ = true;
+                changed = true;
+            }
+            if (!changed) return;
+            importer.clipAnimations = clips;
+            importer.SaveAndReimport();
+        }
+
         private static void ConfigureRealisticCastTextures()
         {
             if (!AssetDatabase.IsValidFolder(RealisticCastFolder)) return;
@@ -159,10 +204,12 @@ namespace MeixiEcho.Editor
             }
         }
 
-        private static void BuildPlayerController(IReadOnlyDictionary<string, AnimationClip> clips)
+        private static void BuildPlayerController(IReadOnlyDictionary<string, AnimationClip> clips,
+            AnimationClip starterIdle, AnimationClip starterWalk, AnimationClip starterRun)
         {
             AnimatorController controller = RecreateController(PlayerController);
             controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+            controller.AddParameter("GaitPhase", AnimatorControllerParameterType.Float);
             controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Light", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Heavy", AnimatorControllerParameterType.Trigger);
@@ -183,7 +230,7 @@ namespace MeixiEcho.Editor
             };
             AssetDatabase.AddObjectToAsset(locomotionTree, controller);
             locomotionTree.AddChild(Find(clips, "Idle", "Unarmed_Idle"), 0f);
-            locomotionTree.AddChild(Find(clips, "Walking_A", "Walking_B"), 0.55f);
+            locomotionTree.AddChild(Find(clips, "Walking_A", "Walking_B"), 0.46f);
             locomotionTree.AddChild(Find(clips, "Running_A", "Running_B"), 1f);
 
             AnimatorState locomotion = machine.AddState("移动混合", new Vector3(350f, 90f));
@@ -197,10 +244,57 @@ namespace MeixiEcho.Editor
             AddAction(machine, locomotion, "受击", Find(clips, "Hit_A", "Hit_B"), "Hit", new Vector3(920f, 250f), 0.78f);
             AddAction(machine, locomotion, "章末收势", Find(clips, "Interact", "Spellcast_Raise", "Idle"), "Victory", new Vector3(1110f, 250f), 0.90f);
 
+            BuildUpperBodyLocomotionLayer(controller, starterIdle, starterWalk, starterRun);
+
             AssetImporter importer = AssetImporter.GetAtPath(PlayerController);
             if (importer != null) importer.userData = ControllerVersion;
             AssetDatabase.WriteImportSettingsIfDirty(PlayerController);
             EditorUtility.SetDirty(controller);
+        }
+
+        private static void BuildUpperBodyLocomotionLayer(AnimatorController controller,
+            AnimationClip idle, AnimationClip walk, AnimationClip run)
+        {
+            var mask = new AvatarMask { name = "MeixiNaturalArmsMask" };
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+                mask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i, false);
+            mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm, true);
+            mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm, true);
+            mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers, true);
+            mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers, true);
+            AssetDatabase.AddObjectToAsset(mask, controller);
+
+            var stateMachine = new AnimatorStateMachine { name = "MeixiNaturalArms" };
+            AssetDatabase.AddObjectToAsset(stateMachine, controller);
+            var layer = new AnimatorControllerLayer
+            {
+                name = "LocomotionUpperBody",
+                defaultWeight = 1f,
+                blendingMode = AnimatorLayerBlendingMode.Override,
+                avatarMask = mask,
+                iKPass = false,
+                stateMachine = stateMachine
+            };
+            controller.AddLayer(layer);
+
+            var tree = new BlendTree
+            {
+                name = "MeixiNaturalArmsBlend",
+                blendType = BlendTreeType.Simple1D,
+                blendParameter = "Speed",
+                useAutomaticThresholds = false
+            };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            tree.AddChild(idle, 0f);
+            tree.AddChild(walk, .46f);
+            tree.AddChild(run, 1f);
+
+            AnimatorState state = stateMachine.AddState("Natural arm locomotion", new Vector3(260f, 90f));
+            state.motion = tree;
+            state.timeParameterActive = true;
+            state.timeParameter = "GaitPhase";
+            state.writeDefaultValues = true;
+            stateMachine.defaultState = state;
         }
 
         private static AnimatorController RecreateController(string path)

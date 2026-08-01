@@ -9,7 +9,7 @@ namespace MeixiEcho
     [Serializable]
     public sealed class MeixiOfflineSaveData
     {
-        public int schemaVersion = 3;
+        public int schemaVersion = 4;
         public bool hasEnteredGame;
         public int currentChapter = 1;
         public int journeyCount;
@@ -18,6 +18,8 @@ namespace MeixiEcho
         public int currentJourneyNpcDialogues;
         public bool firstConversationRecorded;
         public bool chapterOneCompleted;
+        public bool chapterTwoCompleted;
+        public bool terminalBookPending;
         public bool finalBookCollected;
         public string checkpoint = "None";
         public string savedAtUtc = string.Empty;
@@ -54,13 +56,16 @@ namespace MeixiEcho
         public readonly string Title;
         public readonly string Description;
         public readonly MeixiAchievementRank Rank;
+        public readonly string IconResource;
 
-        public MeixiAchievementDefinition(string id, string title, string description, MeixiAchievementRank rank)
+        public MeixiAchievementDefinition(string id, string title, string description,
+            MeixiAchievementRank rank, string iconResource = "")
         {
             Id = id;
             Title = title;
             Description = description;
             Rank = rank;
+            IconResource = iconResource ?? string.Empty;
         }
     }
 
@@ -71,7 +76,7 @@ namespace MeixiEcho
     /// </summary>
     public static class MeixiLocalProgress
     {
-        private const int CurrentSchema = 3;
+        private const int CurrentSchema = 4;
         private const int MaxSafeCounter = 1000000;
         private const string ProgressFileName = "meixi_progress_v1.json";
         private const string SettingsFileName = "meixi_settings_v1.json";
@@ -82,6 +87,10 @@ namespace MeixiEcho
 
         private static readonly MeixiAchievementDefinition[] Definitions =
         {
+            new("heritage", "\u4f20\u627f", "\u5728\u540e\u53f0\u53d1\u73b0\u58c1\u753b\u4e2d\u9690\u85cf\u7684\u4f20\u627f\u5fbd\u8bb0", MeixiAchievementRank.A,
+                "Art/Achievements/Heritage"),
+            new("bearbug_bite", "小熊虫--你可以去撕咬一切了！", "在大门密码锁输入 071029 并确认", MeixiAchievementRank.S,
+                "Art/Achievements/AchievementBearBug"),
             new("graduation_fourth_death", "同学，毕业了，我们不会有下次旅程了", "在第四次实践中因回响力耗尽而倒下", MeixiAchievementRank.B),
             new("one_life_clear", "一命速通", "未曾死亡便取得终末之书", MeixiAchievementRank.SSS),
             new("journey_complete", "旅途结束了", "取得终末之书", MeixiAchievementRank.A),
@@ -130,6 +139,12 @@ namespace MeixiEcho
         public static bool HasGameplayProgress { get { Initialize(); return progress.currentChapter >= 1; } }
         public static bool HasContinueSave => HasGameplayProgress;
         public static int CurrentChapter { get { Initialize(); return Mathf.Clamp(progress.currentChapter, 1, 2); } }
+        public static bool IsCheckpoint(string value)
+        {
+            Initialize();
+            lock (Gate) return string.Equals(progress.checkpoint, value, StringComparison.Ordinal);
+        }
+        public static bool TerminalBookPending { get { Initialize(); return progress.terminalBookPending; } }
         public static bool FinalBookCollected { get { Initialize(); return progress.finalBookCollected; } }
         public static int JourneyCount { get { Initialize(); return progress.journeyCount; } }
         public static int PracticeNumber { get { Initialize(); return Math.Max(1, progress.totalDeaths + 1); } }
@@ -223,6 +238,8 @@ namespace MeixiEcho
             {
                 progress.currentChapter = 1;
                 progress.chapterOneCompleted = false;
+                progress.chapterTwoCompleted = false;
+                progress.terminalBookPending = false;
                 progress.finalBookCollected = false;
                 progress.checkpoint = "ChapterOne";
                 progress.currentJourneyDeaths = 0;
@@ -245,11 +262,14 @@ namespace MeixiEcho
                 if (progress.currentChapter >= 2)
                 {
                     progress.chapterOneCompleted = true;
+                    progress.terminalBookPending = false;
                     progress.checkpoint = "ChapterTwo";
                 }
                 else
                 {
                     progress.chapterOneCompleted = false;
+                    progress.chapterTwoCompleted = false;
+                    progress.terminalBookPending = false;
                     progress.finalBookCollected = false;
                     progress.checkpoint = "ChapterOne";
                 }
@@ -269,6 +289,18 @@ namespace MeixiEcho
             }
         }
 
+        public static void SetCheckpoint(string value)
+        {
+            Initialize();
+            lock (Gate)
+            {
+                if (string.IsNullOrWhiteSpace(value)) return;
+                if (string.Equals(progress.checkpoint, value, StringComparison.Ordinal)) return;
+                progress.checkpoint = value;
+                SaveProgressLocked();
+            }
+        }
+
         public static void MarkChapterOneCompleted()
         {
             Initialize();
@@ -276,7 +308,23 @@ namespace MeixiEcho
             {
                 progress.currentChapter = 2;
                 progress.chapterOneCompleted = true;
+                progress.terminalBookPending = false;
                 progress.checkpoint = "ChapterTwo";
+                SaveProgressLocked();
+            }
+        }
+
+        public static void MarkChapterTwoCompleted()
+        {
+            Initialize();
+            lock (Gate)
+            {
+                progress.currentChapter = 1;
+                progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                progress.terminalBookPending = true;
+                progress.finalBookCollected = false;
+                progress.checkpoint = "TerminalBook";
                 SaveProgressLocked();
             }
         }
@@ -325,8 +373,10 @@ namespace MeixiEcho
             {
                 progress.currentChapter = 2;
                 progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                progress.terminalBookPending = false;
                 progress.finalBookCollected = true;
-                progress.checkpoint = "ChapterTwo";
+                progress.checkpoint = "FinalBookCollected";
                 UnlockWithoutSaving("journey_complete", true);
                 if (progress.currentJourneyDeaths == 0) UnlockWithoutSaving("one_life_clear", true);
                 SaveProgressLocked();
@@ -337,6 +387,17 @@ namespace MeixiEcho
         {
             Initialize();
             lock (Gate) return progress.unlockedAchievements.Contains(id);
+        }
+
+        public static bool UnlockAchievement(string id, bool showToast = true)
+        {
+            Initialize();
+            lock (Gate)
+            {
+                bool unlocked = UnlockWithoutSaving(id, showToast);
+                if (unlocked) SaveProgressLocked();
+                return unlocked;
+            }
         }
 
         public static int UnlockedAchievementCount
@@ -351,6 +412,7 @@ namespace MeixiEcho
         public static string GetContinueSummary()
         {
             Initialize();
+            if (progress.terminalBookPending) return "终章 · 终末之书已在梅溪村显现";
             if (progress.currentChapter <= 1) return "第一章 · 溪流里的节拍";
             return progress.finalBookCollected
                 ? "终末之书已取得  ·  可重返古戏台"
@@ -464,10 +526,23 @@ namespace MeixiEcho
             int sourceSchema = progress.schemaVersion;
             bool legacyChapterTwo = progress.chapterOneCompleted || progress.finalBookCollected ||
                                     string.Equals(progress.checkpoint, "ChapterTwo", StringComparison.Ordinal);
+            if (sourceSchema < 4)
+            {
+                progress.chapterTwoCompleted = progress.finalBookCollected;
+                progress.terminalBookPending = false;
+            }
             if (sourceSchema < 3 || progress.currentChapter < 1)
                 progress.currentChapter = legacyChapterTwo ? 2 : 1;
             progress.currentChapter = Mathf.Clamp(progress.currentChapter, 1, 2);
-            if (progress.currentChapter >= 2)
+            if (progress.terminalBookPending)
+            {
+                progress.currentChapter = 1;
+                progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                progress.finalBookCollected = false;
+                progress.checkpoint = "TerminalBook";
+            }
+            else if (progress.currentChapter >= 2)
             {
                 progress.chapterOneCompleted = true;
                 progress.checkpoint = "ChapterTwo";
@@ -564,6 +639,7 @@ namespace MeixiEcho
         private static readonly HashSet<string> PendingIds = new(StringComparer.Ordinal);
         private static MeixiAchievementToast active;
         private MeixiAchievementDefinition current;
+        private Texture2D currentIcon;
         private bool showing;
         private float shownAt;
         private Font font;
@@ -571,6 +647,8 @@ namespace MeixiEcho
         private GUIStyle titleStyle;
         private GUIStyle descriptionStyle;
         private GUIStyle rankStyle;
+        private AudioSource audioSource;
+        private AudioClip achievementClip;
 
         public static void EnsureHost()
         {
@@ -602,6 +680,7 @@ namespace MeixiEcho
             {
                 active.showing = false;
                 active.current = default;
+                active.currentIcon = null;
             }
         }
 
@@ -610,6 +689,10 @@ namespace MeixiEcho
             if (active != null && active != this) { Destroy(gameObject); return; }
             active = this;
             DontDestroyOnLoad(gameObject);
+            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+            audioSource.spatialBlend = 0f;
+            achievementClip = Resources.Load<AudioClip>("Audio/\u6210\u5c31\u63d0\u793a");
             font = Font.CreateDynamicFontFromOSFont(
                 new[] { "Microsoft YaHei", "SimHei", "STKaiti", "Arial" }, 30);
         }
@@ -636,6 +719,12 @@ namespace MeixiEcho
                     if (Pending.Count > 0)
                     {
                         current = Pending.Dequeue();
+                        currentIcon = string.IsNullOrEmpty(current.IconResource)
+                            ? null : Resources.Load<Texture2D>(current.IconResource);
+                        if (currentIcon == null && string.Equals(current.Id, "heritage", StringComparison.Ordinal))
+                            currentIcon = LoadRuntimeHeritageIcon();
+                        if (audioSource != null && achievementClip != null)
+                            audioSource.PlayOneShot(achievementClip, .82f);
                         showing = true;
                         shownAt = Time.unscaledTime;
                     }
@@ -646,7 +735,38 @@ namespace MeixiEcho
                 lock (Pending) PendingIds.Remove(current.Id);
                 showing = false;
                 current = default;
+                currentIcon = null;
             }
+        }
+
+        private static Texture2D LoadRuntimeHeritageIcon()
+        {
+            string buildRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string[] candidates =
+            {
+                Path.Combine(buildRoot, "MeixiHeritageEmblem.png"),
+                Path.Combine(buildRoot, "..", "MeixiHeritageEmblem.png")
+            };
+            foreach (string path in candidates)
+            {
+                if (!File.Exists(path)) continue;
+                try
+                {
+                    Texture2D texture = new(2, 2, TextureFormat.RGBA32, true)
+                    {
+                        name = "HeritageAchievementIcon_Runtime",
+                        filterMode = FilterMode.Bilinear,
+                        wrapMode = TextureWrapMode.Clamp
+                    };
+                    if (texture.LoadImage(File.ReadAllBytes(path), false)) return texture;
+                    UnityEngine.Object.Destroy(texture);
+                }
+                catch (IOException)
+                {
+                    // Optional icon fallback; the achievement remains valid.
+                }
+            }
+            return null;
         }
 
         private void OnGUI()
@@ -680,9 +800,17 @@ namespace MeixiEcho
             GUI.color = new Color(rankColor.r, rankColor.g, rankColor.b, .95f * visibility);
             GUI.DrawTexture(new Rect(x, y, 8f, height), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(x + 8f, y, width - 8f, 3f), Texture2D.whiteTexture);
-            GUI.DrawTexture(new Rect(x + 18f, y + 21f, 76f, 76f), Texture2D.whiteTexture);
+            Rect iconRect = new Rect(x + 18f, y + 21f, 76f, 76f);
+            GUI.DrawTexture(iconRect, Texture2D.whiteTexture);
             GUI.color = new Color(1f, 1f, 1f, visibility);
-            GUI.Label(new Rect(x + 18f, y + 21f, 76f, 76f), MeixiLocalProgress.RankLabel(current.Rank), rankStyle);
+            if (currentIcon != null)
+            {
+                GUI.DrawTexture(iconRect, currentIcon, ScaleMode.ScaleToFit, true);
+            }
+            else
+            {
+                GUI.Label(iconRect, "?", rankStyle);
+            }
             GUI.Label(new Rect(x + 74f, y + 9f, width - 88f, 18f), "成 就 徽 章 解 锁", eyebrowStyle);
             GUI.Label(new Rect(x + 112f, y + 34f, width - 130f, 38f), current.Title, titleStyle);
             GUI.Label(new Rect(x + 112f, y + 72f, width - 130f, 38f), current.Description, descriptionStyle);

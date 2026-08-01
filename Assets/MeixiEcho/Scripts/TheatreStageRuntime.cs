@@ -75,6 +75,33 @@ namespace MeixiEcho
         private Renderer[] culturalPreludePlayerRenderers = Array.Empty<Renderer>();
         private bool[] culturalPreludeRendererStates = Array.Empty<bool>();
         private float culturalPreludeCameraFov;
+        private int culturalPreludeCameraMode;
+        private float culturalSeatedPoseWeight;
+        private float culturalStandingY;
+        private NaturalHumanoidLocomotionPolish culturalLocomotionPolish;
+        private GameObject culturalQuizRoot;
+        private CanvasGroup culturalQuizGroup;
+        private Text culturalQuizProgress;
+        private Text culturalQuizQuestion;
+        private Text culturalQuizFeedback;
+        private readonly Button[] culturalQuizAnswerButtons = new Button[3];
+        private int culturalQuizQuestionIndex;
+        private bool culturalQuizPassed;
+        private readonly string[] culturalQuizQuestions =
+        {
+            "闽剧又称什么？",
+            "闽剧主要使用哪一种语言演唱和念白？",
+            "闽剧在哪一年列入第一批国家级非物质文化遗产名录？",
+            "短片中，舞台动作的节奏主要由什么共同支撑？"
+        };
+        private readonly string[][] culturalQuizAnswers =
+        {
+            new[] { "福州戏", "梨园戏", "高甲戏" },
+            new[] { "普通话", "福州方言", "闽南方言" },
+            new[] { "2020 年", "2012 年", "2006 年" },
+            new[] { "身段与锣鼓管弦", "灯光与布景", "观众掌声" }
+        };
+        private readonly int[] culturalQuizCorrectAnswers = { 0, 1, 2, 0 };
         private float interactionGuideUntil;
         private float endingInputReadyAt;
         private int endingPageIndex;
@@ -85,10 +112,21 @@ namespace MeixiEcho
         private Vector3 horizontalSmoothVelocity;
         private Vector3 cameraVelocity;
         private Vector2 smoothedLook;
+        private float movementBlockedUntil;
         private readonly RaycastHit[] cameraHits = new RaycastHit[24];
         private readonly List<TheatreInstrument> nearbyInstruments = new();
         private readonly HashSet<TheatreInstrument> playedInstruments = new();
         private static readonly Dictionary<string, Sprite> UiSprites = new(StringComparer.Ordinal);
+        private ChapterTwoAdventureRuntime chapterTwoAdventure;
+        private MeixiThirdPersonPlayer sharedPlayerController;
+        private ThirdPersonOrbitCamera sharedGameplayCamera;
+
+        public bool AllowsSharedPlayerMovement => enabled && !sceneTransitionActive && !culturalPreludeActive &&
+                                                  !stagePaused && !stageSettingsOpen && !endingShown &&
+                                                  Time.unscaledTime >= introUntil &&
+                                                  (chapterTwoAdventure == null ||
+                                                   (!chapterTwoAdventure.IsInputModalOpen &&
+                                                    !chapterTwoAdventure.IsFirstPersonActive));
 
         private void Awake()
         {
@@ -118,6 +156,7 @@ namespace MeixiEcho
             EnsurePlayerVisual();
             EnsurePlayerFillLight();
             animator = player.GetComponentInChildren<Animator>(true);
+            ConfigureSharedGameplayControls();
             yaw = player.eulerAngles.y;
             verticalVelocity = -1.8f;
             horizontalVelocity = Vector3.zero;
@@ -132,14 +171,104 @@ namespace MeixiEcho
             PrepareEndingMusic();
             CreateHud();
             BuildCulturalPrelude();
+            chapterTwoAdventure = gameObject.GetComponent<ChapterTwoAdventureRuntime>();
+            if (chapterTwoAdventure == null) chapterTwoAdventure = gameObject.AddComponent<ChapterTwoAdventureRuntime>();
             BuildSceneFadeOverlay();
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            MeixiCursorState.SetGameplay();
             PositionCameraImmediately();
             if (!ShouldSkipCulturalPrelude()) StartCoroutine(PlayCulturalPrelude());
+            else SetSharedGameplayControlsActive(true);
             TryStartCaptureMode();
+            TryStartSharedMovementValidation();
             StartCoroutine(LogSettledSceneStats());
             Debug.Log("[MeixiTheatre] Runtime reset; third-person stage controller ready.");
+        }
+
+        private void TryStartSharedMovementValidation()
+        {
+            if (!Array.Exists(Environment.GetCommandLineArgs(), value =>
+                    string.Equals(value, "-meixiTheatreMovementValidation", StringComparison.OrdinalIgnoreCase))) return;
+            StartCoroutine(ValidateSharedMovement());
+        }
+
+        private IEnumerator ValidateSharedMovement()
+        {
+            yield return new WaitForSecondsRealtime(1.0f);
+            introUntil = Time.unscaledTime;
+            if (introPanel != null) introPanel.SetActive(false);
+            yield return new WaitForSecondsRealtime(.85f);
+            if (sharedPlayerController == null || stageCamera == null)
+            {
+                Debug.LogError("[MeixiTheatreMovement] Shared chapter-one controller or camera missing.");
+                if (!Application.isEditor) Application.Quit(2);
+                yield break;
+            }
+
+            Vector3 start = player.position;
+            sharedPlayerController.InjectValidationMove(Vector2.left, .08f);
+            yield return new WaitForSecondsRealtime(.38f);
+            Vector3 afterLeft = player.position;
+            sharedPlayerController.InjectValidationMove(Vector2.right, .08f);
+            yield return new WaitForSecondsRealtime(.38f);
+            Vector3 afterRight = player.position;
+            yield return new WaitForSecondsRealtime(.28f);
+            Vector3 viewport = stageCamera.WorldToViewportPoint(player.position + Vector3.up * 1.75f);
+            float leftTravel = Vector3.ProjectOnPlane(afterLeft - start, Vector3.up).magnitude;
+            float rightTravel = Vector3.ProjectOnPlane(afterRight - afterLeft, Vector3.up).magnitude;
+            bool centered = viewport.z > 0f && Mathf.Abs(viewport.x - .5f) < .055f && Mathf.Abs(viewport.y - .5f) < .055f;
+            bool stable = leftTravel < .85f && rightTravel < .85f &&
+                          Vector3.ProjectOnPlane(afterRight - start, Vector3.up).magnitude < .85f;
+            string message = $"[MeixiTheatreMovement] left={leftTravel:F3} right={rightTravel:F3} " +
+                             $"net={Vector3.ProjectOnPlane(afterRight - start, Vector3.up).magnitude:F3} " +
+                             $"viewport=({viewport.x:F3},{viewport.y:F3},{viewport.z:F3})";
+            if (stable && centered) Debug.Log(message + " PASS");
+            else Debug.LogError(message + " FAIL");
+            yield return new WaitForSecondsRealtime(.35f);
+            if (!Application.isEditor) Application.Quit(stable && centered ? 0 : 3);
+        }
+
+        private void ConfigureSharedGameplayControls()
+        {
+            sharedGameplayCamera = stageCamera.GetComponent<ThirdPersonOrbitCamera>();
+            if (sharedGameplayCamera == null) sharedGameplayCamera = stageCamera.gameObject.AddComponent<ThirdPersonOrbitCamera>();
+            sharedGameplayCamera.Configure(player);
+            sharedGameplayCamera.ConfigureInteriorMode(true);
+            sharedGameplayCamera.enabled = false;
+
+            sharedPlayerController = player.GetComponent<MeixiThirdPersonPlayer>();
+            if (sharedPlayerController == null) sharedPlayerController = player.gameObject.AddComponent<MeixiThirdPersonPlayer>();
+            Transform visual = player.Find("林默_舞台模型");
+            if (visual == null && animator != null) visual = animator.transform;
+            sharedPlayerController.ConfigureTheatre(this, sharedGameplayCamera, visual);
+            sharedPlayerController.enabled = false;
+
+            NaturalHumanoidLocomotionPolish polish = player.GetComponentInChildren<NaturalHumanoidLocomotionPolish>(true);
+            if (polish != null)
+            {
+                polish.enabled = false;
+                polish.ConfigurePlayerCamera(stageCamera);
+                polish.enabled = true;
+            }
+        }
+
+        public void SetSharedGameplayControlsActive(bool active)
+        {
+            if (sharedPlayerController != null)
+            {
+                if (active) sharedPlayerController.ResetForNewSession();
+                sharedPlayerController.enabled = active;
+            }
+            if (sharedGameplayCamera != null)
+            {
+                sharedGameplayCamera.Configure(player);
+                sharedGameplayCamera.ConfigureInteriorMode(true);
+                if (active)
+                {
+                    sharedGameplayCamera.ResetGameplayView();
+                    sharedGameplayCamera.ClearInputAfterFocus();
+                }
+                sharedGameplayCamera.enabled = active;
+            }
         }
 
         private void BuildSceneFadeOverlay()
@@ -351,6 +480,7 @@ namespace MeixiEcho
             if (sceneTransitionActive || culturalPreludeActive) return;
             Keyboard keyboard = Keyboard.current;
             Mouse mouse = Mouse.current;
+            if (chapterTwoAdventure != null && chapterTwoAdventure.IsInputModalOpen) return;
             if (stageTerminalPanel != null && stageTerminalPanel.activeSelf)
             {
                 if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) CloseStageTerminal();
@@ -405,11 +535,7 @@ namespace MeixiEcho
 
             bool introActive = Time.unscaledTime < introUntil;
             if (introActive && keyboard != null &&
-                (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame ||
-                 keyboard.wKey.wasPressedThisFrame || keyboard.aKey.wasPressedThisFrame ||
-                 keyboard.sKey.wasPressedThisFrame || keyboard.dKey.wasPressedThisFrame ||
-                 keyboard.upArrowKey.wasPressedThisFrame || keyboard.downArrowKey.wasPressedThisFrame ||
-                 keyboard.leftArrowKey.wasPressedThisFrame || keyboard.rightArrowKey.wasPressedThisFrame))
+                (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame))
             {
                 introUntil = Time.unscaledTime;
                 introActive = false;
@@ -424,16 +550,23 @@ namespace MeixiEcho
                 lookBlockedUntil = Time.unscaledTime + 0.22f;
                 smoothedLook = Vector2.zero;
             }
-            UpdateMovement(!introActive);
-            UpdateInteraction();
+            if (sharedPlayerController == null || !sharedPlayerController.enabled)
+                UpdateMovement(!introActive);
+            if (chapterTwoAdventure == null || !chapterTwoAdventure.IsTakingOverLegacyInteraction)
+                UpdateInteraction();
             UpdateEndingBookVisual();
         }
 
         private void LateUpdate()
         {
             if (player == null || cameraRig == null) return;
-            if (culturalPreludeActive) UpdateCulturalFirstPersonCamera();
-            else UpdateCamera();
+            if (chapterTwoAdventure != null && chapterTwoAdventure.IsFirstPersonActive) return;
+            if (culturalPreludeActive)
+            {
+                UpdateCulturalPreludeCamera();
+                ApplyCulturalSeatedPose();
+            }
+            else if (sharedGameplayCamera == null || !sharedGameplayCamera.enabled) UpdateCamera();
         }
 
         private void BuildCulturalPrelude()
@@ -495,11 +628,135 @@ namespace MeixiEcho
             }
             culturalPreludeSprites = loaded.ToArray();
             culturalPreludeRoot.SetActive(false);
+            BuildCulturalQuiz();
+        }
+
+        private void BuildCulturalQuiz()
+        {
+            culturalQuizRoot = CreatePanel("闽剧文化问答", canvas.transform,
+                new Color(.003f, .010f, .014f, .985f), Vector2.zero, Vector2.one);
+            culturalQuizGroup = culturalQuizRoot.AddComponent<CanvasGroup>();
+            culturalQuizGroup.alpha = 1f;
+            culturalQuizGroup.blocksRaycasts = true;
+            culturalQuizGroup.interactable = true;
+
+            Text eyebrow = CreateText("闽剧问答眉题", culturalQuizRoot.transform,
+                "MIN OPERA CULTURAL ARCHIVE  /  入场测验", 17, TextAnchor.MiddleCenter,
+                new Color(.44f, .86f, .84f));
+            SetRect(eyebrow.rectTransform, new Vector2(.18f, .86f), new Vector2(.82f, .92f));
+            Text title = CreateText("闽剧问答标题", culturalQuizRoot.transform,
+                "听 见 闽 剧", 46, TextAnchor.MiddleCenter, new Color(1f, .76f, .32f));
+            title.font = displayFont;
+            AddTextShadow(title, Color.black, new Vector2(2f, -2f), true);
+            SetRect(title.rectTransform, new Vector2(.18f, .75f), new Vector2(.82f, .86f));
+
+            culturalQuizProgress = CreateText("闽剧问答进度", culturalQuizRoot.transform,
+                "01 / 04", 15, TextAnchor.MiddleCenter, new Color(.52f, .78f, .78f));
+            SetRect(culturalQuizProgress.rectTransform, new Vector2(.40f, .70f), new Vector2(.60f, .75f));
+            culturalQuizQuestion = CreateText("闽剧问答题目", culturalQuizRoot.transform,
+                string.Empty, 30, TextAnchor.MiddleCenter, new Color(.94f, .94f, .88f));
+            culturalQuizQuestion.font = displayFont;
+            SetRect(culturalQuizQuestion.rectTransform, new Vector2(.20f, .56f), new Vector2(.80f, .70f));
+
+            for (int i = 0; i < culturalQuizAnswerButtons.Length; i++)
+            {
+                int answerIndex = i;
+                float top = .53f - i * .14f;
+                culturalQuizAnswerButtons[i] = CreateButton($"闽剧问答选项{i + 1}", culturalQuizRoot.transform,
+                    string.Empty, new Color(.055f, .19f, .22f, .99f),
+                    new Vector2(.27f, top - .11f), new Vector2(.73f, top));
+                culturalQuizAnswerButtons[i].onClick.AddListener(() => ChooseCulturalQuizAnswer(answerIndex));
+            }
+
+            culturalQuizFeedback = CreateText("闽剧问答反馈", culturalQuizRoot.transform,
+                string.Empty, 18, TextAnchor.MiddleCenter, new Color(.62f, .88f, .84f));
+            SetRect(culturalQuizFeedback.rectTransform, new Vector2(.20f, .055f), new Vector2(.80f, .12f));
+            culturalQuizRoot.SetActive(false);
+        }
+
+        private void ShowCulturalQuiz()
+        {
+            culturalQuizQuestionIndex = 0;
+            culturalQuizPassed = false;
+            culturalQuizGroup.alpha = 1f;
+            culturalQuizGroup.blocksRaycasts = true;
+            culturalQuizGroup.interactable = true;
+            culturalQuizRoot.SetActive(true);
+            culturalQuizRoot.transform.SetAsLastSibling();
+            MeixiCursorState.SetPointer();
+            RefreshCulturalQuizQuestion();
+        }
+
+        private void RefreshCulturalQuizQuestion()
+        {
+            culturalQuizProgress.text = $"{culturalQuizQuestionIndex + 1:00} / {culturalQuizQuestions.Length:00}";
+            culturalQuizQuestion.text = culturalQuizQuestions[culturalQuizQuestionIndex];
+            culturalQuizFeedback.text = "请选择答案";
+            culturalQuizFeedback.color = new Color(.62f, .88f, .84f);
+            for (int i = 0; i < culturalQuizAnswerButtons.Length; i++)
+            {
+                Button button = culturalQuizAnswerButtons[i];
+                button.interactable = true;
+                Text label = button.GetComponentInChildren<Text>(true);
+                if (label != null) label.text = culturalQuizAnswers[culturalQuizQuestionIndex][i];
+            }
+            EventSystem.current?.SetSelectedGameObject(culturalQuizAnswerButtons[0].gameObject);
+        }
+
+        private void ChooseCulturalQuizAnswer(int answerIndex)
+        {
+            if (culturalQuizPassed || answerIndex < 0 || answerIndex >= culturalQuizAnswerButtons.Length) return;
+            if (answerIndex != culturalQuizCorrectAnswers[culturalQuizQuestionIndex])
+            {
+                culturalQuizFeedback.text = "还不对，再回想一下刚才的短片内容。";
+                culturalQuizFeedback.color = new Color(1f, .48f, .34f);
+                return;
+            }
+
+            foreach (Button button in culturalQuizAnswerButtons) button.interactable = false;
+            culturalQuizFeedback.text = culturalQuizQuestionIndex == culturalQuizQuestions.Length - 1
+                ? "全部答对，第二章已解锁。"
+                : "回答正确，继续下一题。";
+            culturalQuizFeedback.color = new Color(.48f, 1f, .72f);
+            StartCoroutine(AdvanceCulturalQuiz());
+        }
+
+        private IEnumerator AdvanceCulturalQuiz()
+        {
+            yield return new WaitForSecondsRealtime(.68f);
+            if (culturalQuizQuestionIndex >= culturalQuizQuestions.Length - 1)
+            {
+                culturalQuizPassed = true;
+                yield break;
+            }
+            culturalQuizQuestionIndex++;
+            RefreshCulturalQuizQuestion();
+        }
+
+        private IEnumerator FadeOutCulturalQuiz()
+        {
+            float elapsed = 0f;
+            const float duration = .48f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                culturalQuizGroup.alpha = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+                yield return null;
+            }
+            culturalQuizGroup.alpha = 0f;
+            culturalQuizGroup.blocksRaycasts = false;
+            culturalQuizGroup.interactable = false;
+            culturalQuizRoot.SetActive(false);
         }
 
         private IEnumerator PlayCulturalPrelude()
         {
+            SetSharedGameplayControlsActive(false);
             culturalPreludeActive = true;
+            culturalPreludeCameraMode = 0;
+            culturalSeatedPoseWeight = 0f;
+            culturalStandingY = player.position.y;
+            culturalLocomotionPolish = player.GetComponentInChildren<NaturalHumanoidLocomotionPolish>(true);
             horizontalVelocity = Vector3.zero;
             horizontalSmoothVelocity = Vector3.zero;
             smoothedLook = Vector2.zero;
@@ -507,13 +764,18 @@ namespace MeixiEcho
             if (introPanel != null) introPanel.SetActive(false);
             if (theatreQuestCard != null) theatreQuestCard.SetActive(false);
             if (theatreHintCard != null) theatreHintCard.SetActive(false);
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-            HidePlayerForFirstPersonPrelude();
+            MeixiCursorState.SetGameplay();
             culturalPreludeCameraFov = stageCamera != null ? stageCamera.fieldOfView : 60f;
-            if (stageCamera != null) stageCamera.fieldOfView = 52f;
+            if (stageCamera != null) stageCamera.fieldOfView = 48f;
 
-            yield return new WaitForSecondsRealtime(.74f);
+            yield return new WaitForSecondsRealtime(.82f);
+            yield return WalkToCulturalPreludeSeat();
+            culturalPreludeCameraMode = 1;
+            yield return SitForCulturalPrelude();
+            yield return new WaitForSecondsRealtime(.72f);
+
+            culturalPreludeCameraMode = 2;
+            HidePlayerForFirstPersonPrelude();
             culturalPreludeRoot.SetActive(true);
             culturalPreludeRoot.transform.SetAsLastSibling();
             float fadeElapsed = 0f;
@@ -527,13 +789,13 @@ namespace MeixiEcho
 
             string[] captions =
             {
-                "闽剧，又称福州戏，以福州方言演唱、念白。",
-                "锣鼓开场，管弦托腔；台前身段与场面声部一同呼吸。",
-                "水袖一转，唱腔把人物的悲欢留在一方戏台。",
-                "台下乐师接住每一次停顿，让动作拥有可以听见的节拍。",
-                "2006 年，闽剧列入第一批国家级非物质文化遗产名录。"
+                "闽剧，又称福州戏，是以福州方言演唱、念白的地方戏曲。",
+                "它在闽中、闽东、闽北流传，也随乡音传播到台湾和东南亚。",
+                "水袖、眼神与程式化身段，把人物的情绪写进一方戏台。",
+                "锣鼓定节，管弦托腔；台上身段与台下乐师共同完成节奏。",
+                "2006 年，闽剧作为传统戏剧列入第一批国家级非物质文化遗产名录。"
             };
-            float[] durations = { 2.9f, 3.25f, 3.25f, 2.95f, 3.15f };
+            float[] durations = { 3.65f, 3.85f, 3.95f, 3.85f, 3.75f };
             int frameCount = Mathf.Min(culturalPreludeSprites.Length, captions.Length);
             for (int i = 0; i < frameCount; i++)
                 yield return PresentCulturalFrame(culturalPreludeSprites[i], captions[i], i, frameCount, durations[i]);
@@ -547,16 +809,25 @@ namespace MeixiEcho
             }
             culturalPreludeGroup.alpha = 0f;
             culturalPreludeRoot.SetActive(false);
+            ShowCulturalQuiz();
+            while (!culturalQuizPassed) yield return null;
+            yield return new WaitForSecondsRealtime(.82f);
+            yield return FadeOutCulturalQuiz();
+
             RestorePlayerAfterFirstPersonPrelude();
+            yield return RestorePlayerAfterCulturalSeat();
             if (stageCamera != null) stageCamera.fieldOfView = culturalPreludeCameraFov;
-            culturalPreludeActive = false;
             introUntil = Time.unscaledTime + 3.55f;
+            culturalPreludeActive = false;
+            SetSharedGameplayControlsActive(true);
             if (introPanel != null) introPanel.SetActive(true);
             if (theatreQuestCard != null) theatreQuestCard.SetActive(true);
             if (theatreHintCard != null) theatreHintCard.SetActive(true);
+            objective.text = "登上古戏台，依次唤醒编钟、大鼓与古弦的声纹";
             cameraVelocity = Vector3.zero;
-            PositionCameraImmediately();
             lookBlockedUntil = Time.unscaledTime + .35f;
+            smoothedLook = Vector2.zero;
+            chapterTwoAdventure?.ArmAfterQuiz();
             Debug.Log("[MeixiTheatre] Min Opera cultural prelude completed; third-person control will resume after chapter card.");
         }
 
@@ -583,12 +854,174 @@ namespace MeixiEcho
             }
         }
 
-        private void UpdateCulturalFirstPersonCamera()
+        private IEnumerator WalkToCulturalPreludeSeat()
         {
-            Vector3 eye = player.position + Vector3.up * 1.62f + player.forward * .18f;
-            Vector3 stageFocus = new(0f, 2.8f, 8.4f);
-            cameraRig.position = eye;
-            cameraRig.rotation = Quaternion.LookRotation(stageFocus - eye, Vector3.up);
+            Vector3[] waypoints =
+            {
+                new(0f, culturalStandingY, -5.55f),
+                new(1.20f, culturalStandingY, -5.55f)
+            };
+            foreach (Vector3 target in waypoints)
+            {
+                while (Vector3.ProjectOnPlane(target - player.position, Vector3.up).sqrMagnitude > .018f)
+                {
+                    Vector3 delta = Vector3.ProjectOnPlane(target - player.position, Vector3.up);
+                    Vector3 direction = delta.normalized;
+                    player.rotation = Quaternion.RotateTowards(player.rotation,
+                        Quaternion.LookRotation(direction, Vector3.up), 420f * Time.unscaledDeltaTime);
+                    float distanceBlend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(delta.magnitude / 1.35f));
+                    float travelSpeed = Mathf.Lerp(.34f, 2.15f, distanceBlend);
+                    float travel = Mathf.Min(delta.magnitude, travelSpeed * Time.unscaledDeltaTime);
+                    if (controller.enabled) controller.Move(direction * travel + Vector3.down * .03f);
+                    if (animator != null && animator.runtimeAnimatorController != null)
+                    {
+                        animator.SetFloat("Speed", .43f, .08f, Time.unscaledDeltaTime);
+                        animator.SetBool("Grounded", true);
+                    }
+                    yield return null;
+                }
+            }
+            if (animator != null && animator.runtimeAnimatorController != null)
+                animator.SetFloat("Speed", 0f, .10f, Time.unscaledDeltaTime);
+        }
+
+        private IEnumerator SitForCulturalPrelude()
+        {
+            if (culturalLocomotionPolish != null) culturalLocomotionPolish.enabled = false;
+            if (controller.enabled) controller.enabled = false;
+            Vector3 startPosition = player.position;
+            Quaternion startRotation = player.rotation;
+            Vector3 seatedPosition = new(2.18f, culturalStandingY - .25f, -5.48f);
+            Quaternion seatedRotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+            float elapsed = 0f;
+            const float duration = 1.05f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+                player.position = Vector3.Lerp(startPosition, seatedPosition, t);
+                player.rotation = Quaternion.Slerp(startRotation, seatedRotation, t);
+                culturalSeatedPoseWeight = t;
+                yield return null;
+            }
+            player.position = seatedPosition;
+            player.rotation = seatedRotation;
+            culturalSeatedPoseWeight = 1f;
+        }
+
+        private void UpdateCulturalPreludeCamera()
+        {
+            Vector3 targetPosition;
+            Vector3 lookPoint;
+            float smooth;
+            if (culturalPreludeCameraMode == 0)
+            {
+                targetPosition = player.position + new Vector3(-3.15f, 2.35f, -3.65f);
+                lookPoint = player.position + Vector3.up * 1.18f + player.forward * .55f;
+                smooth = .22f;
+            }
+            else if (culturalPreludeCameraMode == 1)
+            {
+                targetPosition = player.position + new Vector3(-3.05f, 2.20f, -2.45f);
+                lookPoint = player.position + Vector3.up * 1.02f + Vector3.forward * .32f;
+                smooth = .24f;
+            }
+            else
+            {
+                targetPosition = player.position + Vector3.up * 1.42f - Vector3.forward * .18f;
+                lookPoint = new Vector3(0f, 2.8f, 8.4f);
+                smooth = .16f;
+            }
+            cameraRig.position = Vector3.SmoothDamp(cameraRig.position, targetPosition, ref cameraVelocity, smooth,
+                Mathf.Infinity, Time.unscaledDeltaTime);
+            Quaternion rotation = Quaternion.LookRotation(lookPoint - cameraRig.position, Vector3.up);
+            cameraRig.rotation = Quaternion.Slerp(cameraRig.rotation, rotation,
+                1f - Mathf.Exp(-6.5f * Time.unscaledDeltaTime));
+        }
+
+        private void ApplyCulturalSeatedPose()
+        {
+            if (culturalSeatedPoseWeight <= .001f || animator == null || !animator.isHuman) return;
+            float weight = Mathf.SmoothStep(0f, 1f, culturalSeatedPoseWeight);
+            Vector3 forward = player.forward;
+            Vector3 right = player.right;
+            Vector3 down = Vector3.down;
+            Transform leftUpperLeg = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+            Transform rightUpperLeg = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+            Transform leftLowerLeg = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+            Transform rightLowerLeg = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+            Transform leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            Transform rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            Transform leftUpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            Transform rightUpperArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            Transform leftLowerArm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            Transform rightLowerArm = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            Transform leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            Transform rightHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            AimCulturalBone(leftUpperLeg, leftLowerLeg, forward * .78f + down * .20f - right * .08f, weight);
+            AimCulturalBone(rightUpperLeg, rightLowerLeg, forward * .78f + down * .20f + right * .08f, weight);
+            AimCulturalBone(leftLowerLeg, leftFoot, down + forward * .08f, weight);
+            AimCulturalBone(rightLowerLeg, rightFoot, down + forward * .08f, weight);
+            AimCulturalBone(leftUpperArm, leftLowerArm, down + forward * .14f - right * .04f, weight * .86f);
+            AimCulturalBone(rightUpperArm, rightLowerArm, down + forward * .14f + right * .04f, weight * .86f);
+            AimCulturalBone(leftLowerArm, leftHand, forward * .58f + down * .34f + right * .08f, weight * .78f);
+            AimCulturalBone(rightLowerArm, rightHand, forward * .58f + down * .34f - right * .08f, weight * .78f);
+        }
+
+        private static void AimCulturalBone(Transform bone, Transform child, Vector3 direction, float weight)
+        {
+            if (bone == null || child == null || direction.sqrMagnitude < .0001f) return;
+            Vector3 current = child.position - bone.position;
+            if (current.sqrMagnitude < .0001f) return;
+            Quaternion target = Quaternion.FromToRotation(current.normalized, direction.normalized) * bone.rotation;
+            bone.rotation = Quaternion.Slerp(bone.rotation, target, Mathf.Clamp01(weight));
+        }
+
+        private IEnumerator RestorePlayerAfterCulturalSeat()
+        {
+            if (culturalLocomotionPolish != null) culturalLocomotionPolish.enabled = false;
+            if (controller.enabled) controller.enabled = false;
+            Vector3 startPosition = player.position;
+            Quaternion startRotation = player.rotation;
+            Vector3 standingPosition = new(0f, culturalStandingY, -5.52f);
+            Quaternion standingRotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+            culturalPreludeCameraMode = 1;
+            float elapsed = 0f;
+            const float duration = 1.05f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+                player.position = Vector3.Lerp(startPosition, standingPosition, t);
+                player.rotation = Quaternion.Slerp(startRotation, standingRotation, t);
+                culturalSeatedPoseWeight = 1f - t;
+                if (animator != null && animator.runtimeAnimatorController != null)
+                    animator.SetFloat("Speed", t < .72f ? 0f : .18f);
+                yield return null;
+            }
+
+            player.position = standingPosition;
+            player.rotation = standingRotation;
+            culturalSeatedPoseWeight = 0f;
+            if (animator != null && animator.runtimeAnimatorController != null)
+            {
+                animator.Rebind();
+                animator.Update(0f);
+                animator.SetFloat("Speed", 0f);
+                animator.SetBool("Grounded", true);
+            }
+            Physics.SyncTransforms();
+            controller.enabled = true;
+            verticalVelocity = -1.6f;
+            horizontalVelocity = Vector3.zero;
+            horizontalSmoothVelocity = Vector3.zero;
+            movementBlockedUntil = Time.unscaledTime + .45f;
+            yaw = player.eulerAngles.y;
+            pitch = 19f;
+            cameraDistance = 5.45f;
+            smoothedLook = Vector2.zero;
+            if (culturalLocomotionPolish != null) culturalLocomotionPolish.enabled = true;
+            MeixiCursorState.SetGameplay();
         }
 
         private void HidePlayerForFirstPersonPrelude()
@@ -613,6 +1046,15 @@ namespace MeixiEcho
 
         private static bool ShouldSkipCulturalPrelude()
         {
+            // A chapter-two gate checkpoint means the player has already passed
+            // the Min Opera presentation and quiz. Reloading after a puppet
+            // catch must restore the chase directly instead of replaying the
+            // introduction and blocking on the quiz again.
+            if (MeixiLocalProgress.IsCheckpoint("ChapterTwoGateOpened"))
+            {
+                Debug.Log("[MeixiTheatre] Skipping Min Opera prelude: gate checkpoint is active.");
+                return true;
+            }
             foreach (string argument in Environment.GetCommandLineArgs())
             {
                 if (!argument.StartsWith("-meixi", StringComparison.OrdinalIgnoreCase)) continue;
@@ -628,6 +1070,10 @@ namespace MeixiEcho
         private void UpdateMovement(bool acceptsInput)
         {
             Keyboard keyboard = Keyboard.current;
+            // Keep one stalled frame from turning a held A/D key into a large
+            // CharacterController displacement after the opening transition.
+            float frameDelta = Mathf.Min(Time.deltaTime, 1f / 30f);
+            acceptsInput &= Time.unscaledTime >= movementBlockedUntil;
             float x = 0f;
             float z = 0f;
             if (acceptsInput && keyboard != null)
@@ -638,22 +1084,42 @@ namespace MeixiEcho
                     (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
             }
 
-            Vector3 cameraForward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-            Vector3 cameraRight = Quaternion.Euler(0f, yaw + 90f, 0f) * Vector3.forward;
+            // Read the heading that is actually on screen. The stored yaw can
+            // be ahead of the smoothed camera during an opening or focus blend,
+            // which makes a short A/D press move on an unexpected world axis.
+            Vector3 cameraForward = cameraRig != null
+                ? Vector3.ProjectOnPlane(cameraRig.forward, Vector3.up)
+                : Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+            if (cameraForward.sqrMagnitude < .001f) cameraForward = Vector3.forward;
+            cameraForward.Normalize();
+            Vector3 cameraRight = Vector3.Cross(Vector3.up, cameraForward).normalized;
             Vector3 move = Vector3.ClampMagnitude(cameraForward * z + cameraRight * x, 1f);
             if (move.sqrMagnitude > 0.01f)
-                player.forward = Vector3.Slerp(player.forward, move, 1f - Mathf.Exp(-14f * Time.deltaTime));
+                player.rotation = Quaternion.RotateTowards(player.rotation,
+                    Quaternion.LookRotation(move, Vector3.up), 720f * frameDelta);
 
-            Vector3 targetVelocity = move * 4.7f;
+            Vector3 targetVelocity = move * 5.2f;
             horizontalVelocity = Vector3.SmoothDamp(horizontalVelocity, targetVelocity, ref horizontalSmoothVelocity,
-                targetVelocity.sqrMagnitude > 0.01f ? 0.08f : 0.12f, Mathf.Infinity, Time.deltaTime);
+                targetVelocity.sqrMagnitude > 0.01f ? 0.060f : 0.085f, Mathf.Infinity, frameDelta);
             if (IsGrounded()) verticalVelocity = -1.8f;
-            else verticalVelocity = Mathf.Max(verticalVelocity + Physics.gravity.y * 2.15f * Time.deltaTime, -24f);
-            controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * Time.deltaTime);
+            else verticalVelocity = Mathf.Max(verticalVelocity + Physics.gravity.y * 2.15f * frameDelta, -24f);
+            Vector3 beforeMove = player.position;
+            controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * frameDelta);
+            Vector3 actualMove = player.position - beforeMove;
+            float maxExpectedHorizontal = Mathf.Max(.24f, horizontalVelocity.magnitude * frameDelta + .08f);
+            if (actualMove.x * actualMove.x + actualMove.z * actualMove.z > maxExpectedHorizontal * maxExpectedHorizontal)
+            {
+                controller.enabled = false;
+                player.position = beforeMove;
+                controller.enabled = true;
+                horizontalVelocity = Vector3.zero;
+                horizontalSmoothVelocity = Vector3.zero;
+                Debug.LogWarning($"[MeixiTheatre] Ignored unexpected one-frame player displacement: {actualMove}");
+            }
 
             if (animator != null && animator.runtimeAnimatorController != null)
             {
-                animator.SetFloat("Speed", Mathf.Clamp01(horizontalVelocity.magnitude / 4.7f) * 0.62f);
+                animator.SetFloat("Speed", Mathf.Clamp01(horizontalVelocity.magnitude / 5.2f) * 0.62f);
                 animator.SetBool("Grounded", IsGrounded());
             }
 
@@ -671,7 +1137,7 @@ namespace MeixiEcho
         private void UpdateCamera()
         {
             Mouse mouse = Mouse.current;
-            if (Time.unscaledTime >= introUntil && mouse != null && Cursor.lockState == CursorLockMode.Locked &&
+            if (Time.unscaledTime >= introUntil && mouse != null && !MeixiCursorState.IsPointerMode &&
                 Time.unscaledTime >= lookBlockedUntil)
             {
                 Vector2 raw = Vector2.ClampMagnitude(mouse.delta.ReadValue(), 28f);
@@ -796,6 +1262,11 @@ namespace MeixiEcho
         public void NotifyInstrumentPlayed(TheatreInstrument instrument)
         {
             if (instrument == null) return;
+            if (chapterTwoAdventure != null && chapterTwoAdventure.IsArmed)
+            {
+                chapterTwoAdventure.NotifyLegacyInstrumentPlayed(instrument);
+                return;
+            }
             playedInstruments.Add(instrument);
             int total = FindObjectsByType<TheatreInstrument>().Length;
             bool completed = total > 0 && playedInstruments.Count >= total;
@@ -804,6 +1275,15 @@ namespace MeixiEcho
                 : $"已唤醒 {playedInstruments.Count} / {Mathf.Max(1, total)} 个声部 · 继续寻找发光的传统乐器";
             cameraDistance = Mathf.Max(5.4f, cameraDistance - 0.18f);
             if (completed && !endingShown && endingBook == null) SpawnEndingBook();
+        }
+
+        public void HideLegacyPresentationForAdventure()
+        {
+            introUntil = Time.unscaledTime;
+            if (introPanel != null) introPanel.SetActive(false);
+            if (culturalPreludeRoot != null) culturalPreludeRoot.SetActive(false);
+            if (culturalQuizRoot != null) culturalQuizRoot.SetActive(false);
+            if (endingPanel != null) endingPanel.SetActive(false);
         }
 
         private void SpawnEndingBook()
@@ -880,8 +1360,7 @@ namespace MeixiEcho
                 endingMusicSource.Play();
                 StartCoroutine(FadeInEndingMusic());
             }
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             Debug.Log("[MeixiTheatre] All instruments restored; ending message opened.");
         }
 
@@ -904,6 +1383,23 @@ namespace MeixiEcho
             chapterMusicSource.Play();
             StartChapterMusicFade(.64f, 1.15f);
             Debug.Log($"[MeixiTheatre] Chapter-two opening BGM started: {chapterMusicSource.clip.name}");
+        }
+
+        public void StopChapterMusic()
+        {
+            if (chapterMusicFadeRoutine != null)
+            {
+                StopCoroutine(chapterMusicFadeRoutine);
+                chapterMusicFadeRoutine = null;
+            }
+            foreach (AudioSource source in GetComponents<AudioSource>())
+            {
+                if (source == null || source.clip == null ||
+                    !string.Equals(source.clip.name, "ChapterTwoOpening", StringComparison.OrdinalIgnoreCase)) continue;
+                source.Stop();
+                source.volume = 0f;
+                source.clip = null;
+            }
         }
 
         private void DuckChapterMusic()
@@ -1287,8 +1783,8 @@ namespace MeixiEcho
                 stagePausePanel.SetActive(stagePaused);
                 if (stagePaused) stagePausePanel.transform.SetAsLastSibling();
             }
-            Cursor.lockState = stagePaused ? CursorLockMode.None : CursorLockMode.Locked;
-            Cursor.visible = stagePaused;
+            if (stagePaused) MeixiCursorState.SetPointer();
+            else MeixiCursorState.SetGameplay();
             horizontalVelocity = Vector3.zero;
             smoothedLook = Vector2.zero;
         }
@@ -1404,8 +1900,7 @@ namespace MeixiEcho
         {
             Time.timeScale = 1f;
             AudioListener.pause = false;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             Application.Quit(0);
         }
 
@@ -1517,8 +2012,7 @@ namespace MeixiEcho
             if (stagePaused)
             {
                 Time.timeScale = 0f;
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+                MeixiCursorState.SetPointer();
                 return;
             }
             Time.timeScale = 1f;
@@ -1527,8 +2021,7 @@ namespace MeixiEcho
             lookBlockedUntil = Time.unscaledTime + 0.30f;
             if (Time.unscaledTime >= introUntil)
             {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
+                MeixiCursorState.SetGameplay();
             }
         }
 

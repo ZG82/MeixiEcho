@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -8,10 +9,13 @@ namespace MeixiEcho.Editor
 {
     public static class MeixiWindowsBuild
     {
+        private const string ApplicationIconPath = "Assets/MeixiEcho/Art/Logos/meixi_app_icon.png";
+
         [MenuItem("梅溪回响/构建 Windows Demo")]
         public static void BuildWindowsDemo()
         {
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            ConfigureApplicationIcon();
             MeixiAnimationSetup.EnsureAssets();
             if (!File.Exists(Path.GetFullPath(Path.Combine(Application.dataPath, "Scenes", "MeixiEditable.unity"))))
             {
@@ -56,6 +60,43 @@ namespace MeixiEcho.Editor
             {
                 Debug.LogError($"Windows 构建失败：{report.summary.result}");
             }
+        }
+
+        [MenuItem("Meixi Echo/Configure Application Icon")]
+        public static void ConfigureApplicationIcon()
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(ApplicationIconPath) as TextureImporter;
+            if (importer == null)
+                throw new FileNotFoundException("Application icon was not found.", ApplicationIconPath);
+
+            bool importerChanged = importer.textureType != TextureImporterType.Default
+                || importer.mipmapEnabled
+                || importer.alphaIsTransparency
+                || importer.maxTextureSize != 1024
+                || importer.textureCompression != TextureImporterCompression.Uncompressed;
+
+            if (importerChanged)
+            {
+                importer.textureType = TextureImporterType.Default;
+                importer.mipmapEnabled = false;
+                importer.alphaIsTransparency = false;
+                importer.maxTextureSize = 1024;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            Texture2D icon = AssetDatabase.LoadAssetAtPath<Texture2D>(ApplicationIconPath);
+            if (icon == null)
+                throw new FileNotFoundException("Application icon could not be imported.", ApplicationIconPath);
+
+            int[] iconSizes = PlayerSettings.GetIconSizes(NamedBuildTarget.Standalone, IconKind.Any);
+            Texture2D[] icons = new Texture2D[iconSizes.Length];
+            for (int index = 0; index < icons.Length; index++)
+                icons[index] = icon;
+
+            PlayerSettings.SetIcons(NamedBuildTarget.Standalone, icons, IconKind.Any);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"Configured Windows application icon: {ApplicationIconPath}");
         }
     }
 }

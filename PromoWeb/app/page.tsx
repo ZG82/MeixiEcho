@@ -1,4 +1,6 @@
-const localDownloadHref = "/downloads/MeixiEcho_v0.9.3_Windows_x64_Setup.exe";
+import GameplayJumpButton from "./GameplayJumpButton";
+
+const localDownloadHref = "/downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe";
 const downloadHref = process.env.NEXT_PUBLIC_DOWNLOAD_URL?.trim() || localDownloadHref;
 const downloadAttribute = downloadHref.startsWith("http") ? undefined : true;
 
@@ -43,11 +45,12 @@ export default function Home() {
         <nav aria-label="主导航">
           <a href="#story">故事</a>
           <a href="#gameplay">玩法</a>
+          <a href="#chapters">章节</a>
           <a href="#gallery">海报</a>
           <a href="#release">版本</a>
         </nav>
         <a className="nav-download" href={downloadHref} download={downloadAttribute}>
-          下载 v0.9.3
+          下载 Windows 版
         </a>
       </header>
 
@@ -73,14 +76,12 @@ export default function Home() {
               <span>下载 Windows 版</span>
               <b>↓</b>
             </a>
-            <a className="text-link" href="#gameplay">
-              查看玩法 <span>↘</span>
-            </a>
+            <GameplayJumpButton />
           </div>
           <div className="hero-meta" aria-label="版本信息">
             <div>
               <small>当前版本</small>
-              <strong>v0.9.3</strong>
+              <strong>v0.9.5</strong>
             </div>
             <div>
               <small>平台</small>
@@ -102,14 +103,14 @@ export default function Home() {
             <div className="poster-red-wash" />
             <div className="halftone" />
             <div className="speed-lines" />
-            <div className="poster-version">VER. 0.9.3</div>
+            <div className="poster-version">VER. 0.9.5</div>
             <div className="poster-caption">
               <span>LISTEN</span>
               <b>让失去的声音<br />重新响起</b>
             </div>
             <div className="poster-seal">魂<br />音</div>
           </div>
-          <p className="poster-note">ORIGINAL KEY ART · v0.9.3</p>
+          <p className="poster-note">ORIGINAL KEY ART · v0.9.5</p>
         </div>
       </section>
 
@@ -177,9 +178,46 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="gallery section" id="gallery">
+      <section className="chapters section" id="chapters">
         <div className="section-heading compact">
           <span className="section-number">03</span>
+          <div>
+            <p className="kicker">TWO COMPLETE CHAPTERS</p>
+            <h2>两段旅途已经完整，<br />从溪声走到戏台深处。</h2>
+          </div>
+        </div>
+        <div className="chapter-route" aria-label="第一章与第二章内容状态">
+          <article className="chapter-route-item chapter-one">
+            <span className="chapter-index">I</span>
+            <div>
+              <small>CHAPTER I · COMPLETE</small>
+              <h3>没有声音的村庄</h3>
+              <p>调查梅溪村、记录三位村民的声纹，收集溪流魂音，并完成三阶段节拍战斗。</p>
+              <ul>
+                <li>村庄探索与 NPC 叙事</li>
+                <li>魂音采集与三阶段溪灵战</li>
+              </ul>
+            </div>
+          </article>
+          <div className="chapter-bridge" aria-hidden="true"><i /><span>余音之路</span><i /></div>
+          <article className="chapter-route-item chapter-two">
+            <span className="chapter-index">II</span>
+            <div>
+              <small>CHAPTER II · COMPLETE</small>
+              <h3>古厝里的旧曲</h3>
+              <p>唤醒传统乐器，解开古戏台机关，深入镜像迷宫，并把最后的回响带回梅溪村。</p>
+              <ul>
+                <li>乐器互动、物件检视与机关解谜</li>
+                <li>木偶追逐、镜像迷宫与终末之书</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="gallery section" id="gallery">
+        <div className="section-heading compact">
+          <span className="section-number">04</span>
           <div>
             <p className="kicker">SCENES EXPANDED FROM THE GAME</p>
             <h2>源自实机场景，<br />扩展成梅溪的电影记忆。</h2>
@@ -215,30 +253,59 @@ export default function Home() {
             </div>
           </figure>
         </div>
-        <p className="gallery-footnote">四张海报均以游戏实际场景为构图参考，并进行艺术化扩展。</p>
+        <div className="chapter-two-art-grid">
+          <figure className="chapter-art chapter-art-stage">
+            <figcaption>
+              <small>CHAPTER II · INSTRUMENTS</small>
+              <strong>旧乐器重新发声</strong>
+              <span>以游戏乐器舞台为结构参考，重绘木构、编钟、鼓与古筝的历史质感。</span>
+            </figcaption>
+          </figure>
+          <figure className="chapter-art chapter-art-maze">
+            <figcaption>
+              <small>CHAPTER II · MIRROR MAZE</small>
+              <strong>镜中不是唯一的归路</strong>
+              <span>手电照亮错位反射，声纹沿潮湿木廊延伸；只有镜中的木偶知道哪一面通向旧戏台。</span>
+            </figcaption>
+          </figure>
+        </div>
+        <div className="campaign-poster-feature">
+          <figure className="campaign-poster-image" aria-label="梅溪回响主宣发海报" />
+          <div className="campaign-poster-copy">
+            <p className="kicker">OFFICIAL CAMPAIGN ART · v0.9.5</p>
+            <h3>两章完整，余音归村</h3>
+            <p>从雨后梅溪村到封闭古戏台，探索、节拍战斗、乐器互动与终末回流汇成一段完整旅程。</p>
+            <dl>
+              <div><dt>第一章</dt><dd>村庄调查 · 魂音采集 · 三阶段溪灵战</dd></div>
+              <div><dt>第二章</dt><dd>古戏台机关 · 镜像迷宫 · 木偶追逐</dd></div>
+              <div><dt>终章</dt><dd>返回梅溪村 · 拾取终末之书</dd></div>
+            </dl>
+          </div>
+        </div>
+        <p className="gallery-footnote">海报取材于游戏场景，并以电影式构图重绘梅溪村、古戏台与声纹意象。</p>
       </section>
 
       <section className="release section" id="release">
         <div className="release-card">
           <div className="release-stamp">
             <small>CURRENT<br />BUILD</small>
-            <strong>0.9.3</strong>
+            <strong>0.9.5</strong>
           </div>
           <div className="release-copy">
-            <p className="kicker">LATEST RELEASE · 2026.07</p>
-            <h2>第一章体验版现已开放下载</h2>
+            <p className="kicker">LATEST RELEASE · 2026.08</p>
+            <h2>第一章、第二章完整版现已完成</h2>
             <p>
-              本版本包含序章日记、梅溪村探索、NPC 对话、完整三阶段溪灵战斗与章节出口。
-              v0.9.3 继续完善存档、战斗与第二章体验。
+              从梅溪村调查到古厝戏台迷宫，两章主线现已完整贯通。
+              v0.9.5 继续完善终章回流、战斗节奏、场景表现与交互体验。
             </p>
-            <aside className="update-notice" aria-label="v0.9.3 更新通知">
-              <strong>v0.9.3 更新通知</strong>
+            <aside className="update-notice" aria-label="v0.9.5 更新通知">
+              <strong>v0.9.5 更新通知</strong>
               <ul>
-                <li>增加终端系统，可更加灵活地调整游戏进度</li>
-                <li>降低第一章第三阶段难度，左右手声部判定时长增加 75%</li>
-                <li>修复鼠标失灵、页面无响应、删除存档不可用等已知问题</li>
-                <li>第二章新增部分内容，文化演出与古戏台体验进一步完善</li>
-                <li>第二章仍处于开发阶段，可能存在少量问题，但不影响正常运行</li>
+                <li>第一章、第二章完整内容已完成，主线可连续体验至终章</li>
+                <li>第二章加入乐器互动、机关解谜、物件检视、镜像迷宫与木偶追逐</li>
+                <li>第二章结束返回梅溪村后，终末之书会在地图中央显现</li>
+                <li>第一章第三阶段再次降低难度，双手声部判定放宽至基础窗口的 2.10 倍</li>
+                <li>缩短第三阶段持续声部长按时长，并继续美化人物、村庄与戏台表现</li>
               </ul>
             </aside>
             <ul>
@@ -250,8 +317,8 @@ export default function Home() {
           <div className="release-action">
             <a className="download-card" href={downloadHref} download={downloadAttribute}>
               <span>
-                <small>WINDOWS x64 · 约 153 MB</small>
-                <strong>立即下载安装</strong>
+                <small>WINDOWS x64 · v0.9.5 · 约 152 MB</small>
+                <strong>下载 0.9.5 安装包</strong>
               </span>
               <b>↓</b>
             </a>

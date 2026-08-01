@@ -24,6 +24,23 @@ namespace MeixiEcho
                     string.Equals(value, "-meixiTheatreSettingsCapture", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(value, "-meixiTheatrePauseCapture", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(value, "-meixiMinOperaPreludeCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiTheatreMovementValidation", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoAdventureCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoMazeCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoMazeSoulCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoInventoryCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoInspectCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoLubanCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoHandwritingCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value, "-meixiChapterTwoFlashlightCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value, "-meixiChapterTwoRoomsCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value, "-meixiChapterTwoPosterCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoShellCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoStairCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoGateCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoPuppetCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoPuppetStairCapture", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "-meixiChapterTwoKeypadCapture", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(value, "-meixiEndingCapture", System.StringComparison.OrdinalIgnoreCase)))
             {
                 theatreCaptureRedirected = true;

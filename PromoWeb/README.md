@@ -1,6 +1,6 @@
 # 《梅溪回响》宣发网站
 
-游戏 v0.9.3 的宣传与下载页面，使用 vinext、React 和 Cloudflare Vite 插件构建。
+游戏 v0.9.5 的宣传页面，使用 vinext、React 和 Cloudflare Vite 插件构建。当前页面展示第一章、第二章完整内容与第二章新增艺术海报。
 
 ## 环境
 
@@ -17,17 +17,17 @@ npm run dev
 默认下载链接为：
 
 ```text
-/downloads/MeixiEcho_v0.9.3_Windows_x64_Setup.exe
+/downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe
 ```
 
-本地需要测试下载时，可自行把安装包复制到 `public/downloads/`。安装包已被 Git 忽略，不会提交到 GitHub。
+本地构建会把 0.9.5 安装包复制到 `out/downloads/`。安装包已被 Git 忽略，不会提交到 GitHub。
 
 ## 生产下载地址
 
 正式部署时使用环境变量指向 GitHub Releases 或 CDN：
 
 ```text
-NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/<owner>/<repository>/releases/download/v0.9.3/MeixiEcho_v0.9.3_Windows_x64_Setup.exe
+NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/<owner>/<repository>/releases/download/v0.9.5/MeixiEcho_v0.9.5_Windows_x64_Setup.exe
 ```
 
 可复制 `.env.example` 为本地环境文件后修改。不要把真实部署密钥写入仓库。

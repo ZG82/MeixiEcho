@@ -97,6 +97,8 @@ namespace MeixiEcho
         private Transform playerTransform;
         private ThirdPersonOrbitCamera orbitCamera;
         private CreekRhythmEnemy3D creekSpirit;
+        private ChapterTwoAdventureRuntime chapterTwoAdventureRuntime;
+        private float nextChapterTwoLookupAt;
         private AudioSource audioSource;
         private AudioSource musicSource;
         private AudioClip lowTone;
@@ -191,6 +193,19 @@ namespace MeixiEcho
         private Text chapterCardSubtitle;
         private Button endingReplayButton;
         private Button endingNextChapterButton;
+        private Text endingTitleText;
+        private Text endingStoryText;
+        private GameObject terminalEndingPageRoot;
+        private Text terminalEndingPageTitle;
+        private Text terminalEndingPageBody;
+        private Text terminalEndingPageNumber;
+        private Text terminalEndingNavigation;
+        private AudioSource terminalEndingMusicSource;
+        private Coroutine terminalEndingMusicFadeRoutine;
+        private float terminalEndingInputReadyAt;
+        private int terminalEndingPageIndex;
+        private string[] terminalEndingPageTitles = Array.Empty<string>();
+        private string[] terminalEndingPageBodies = Array.Empty<string>();
         private Text rhythmTitle;
         private Text rhythmJudge;
         private Text rhythmScore;
@@ -267,10 +282,17 @@ namespace MeixiEcho
         private float heavyChargeStarted;
         private bool captureMode;
         private bool captureDone;
+        private GameObject terminalBook;
+        private Vector3 terminalBookBasePosition;
+        private bool terminalBookReturnActive;
+        private bool terminalEndingOpen;
         private bool titleCaptureWhenReady;
         private bool openingCaptureWhenReady;
         private float captureAt;
         private string captureFileName = "MeixiCapture.png";
+        private Transform groundWalkValidationTarget;
+        private CharacterController groundWalkValidationController;
+        private Vector3 groundWalkValidationStart;
         private bool rhythmAutoValidation;
         private bool rhythmFinisherValidation;
         private bool meleeAutoValidation;
@@ -301,10 +323,9 @@ namespace MeixiEcho
         private const double CombatSequenceStepTolerance = 0.28d;
         private const double CombatHoldEarlyBuffer = 0.16d;
         private const double CombatPhaseRestSeconds = 1.80d;
-        // Phase three's dual-hand score was already widened to 125% of the
-        // chapter baseline. Give both voices another 40% reaction allowance:
-        // 1.25 * 1.40 = 1.75. Phases one and two still use the untouched 1.00 path.
-        private const float PhaseThreeJudgementScale = 1.75f;
+        // Keep phases one and two untouched. Phase three now grants 2.10x the
+        // baseline timing window so dual-hand inputs remain readable under load.
+        private const float PhaseThreeJudgementScale = 2.10f;
         private float CurrentCombatInputWindow => CombatInputWindow *
             (chapterOneCombatPhase >= 3 ? PhaseThreeJudgementScale : 1f);
         private float CurrentCombatChordWindow => CombatChordWindow *
@@ -414,6 +435,12 @@ namespace MeixiEcho
         }
 
         public bool CinematicInputLocked => Time.unscaledTime < cinematicInputLockedUntil;
+        // A modal screen owns the pointer. Camera recovery must not recapture it
+        // when the player clicks an achievement or settings control.
+        public bool PointerUiOpen => !started || paused || openingActive || dialogueOpen || complete ||
+                                     gameplayGuideOpen || phaseThreeGuideOpen || pauseSettingsOpen ||
+                                     (terminalPanel != null && terminalPanel.activeSelf) ||
+                                     (chapterTwoAdventureRuntime != null && chapterTwoAdventureRuntime.IsInputModalOpen);
         public bool CanPlayerMove => started && !openingActive && !paused && !defeatOpen && !gameplayGuideOpen && !phaseThreeGuideOpen && !finishingStrike && !sceneTransitionActive && !CinematicInputLocked &&
                                      (!rhythmActive || chapterOneCombatActive) && (!complete || secondChapterRouteActive);
         public bool GameplayRunning => started && !openingActive && !dialogueOpen && !complete && !paused && !defeatOpen && !gameplayGuideOpen && !phaseThreeGuideOpen && !sceneTransitionActive && !CinematicInputLocked;
@@ -459,6 +486,8 @@ namespace MeixiEcho
             // cannot expose a transient 3D scene frame.
             TryStartCaptureMode();
             TryStartSecondChapterSmokeTest();
+            if (MeixiLocalProgress.TerminalBookPending && !IsAutomatedPresentationRun())
+                StartCoroutine(ResumeTerminalBookReturnRoutine());
         }
 
         private void TryStartSecondChapterSmokeTest()
@@ -484,6 +513,16 @@ namespace MeixiEcho
             if (!Array.Exists(Environment.GetCommandLineArgs(), value =>
                     string.Equals(value, "-meixiSecondChapterSmoke", StringComparison.OrdinalIgnoreCase))) return;
             StartCoroutine(ValidateInputAndSecondChapterTransition());
+        }
+
+        private IEnumerator ValidateTerminalBookPresentation()
+        {
+            yield return null;
+            PresentTerminalBookEnding();
+            yield return new WaitForSecondsRealtime(.80f);
+            Debug.Log($"[MeixiFinalBook] validation pages={terminalEndingPageBodies.Length} " +
+                      $"page={terminalEndingPageIndex + 1} musicPlaying={terminalEndingMusicSource != null && terminalEndingMusicSource.isPlaying} " +
+                      $"musicClip={(terminalEndingMusicSource != null && terminalEndingMusicSource.clip != null ? terminalEndingMusicSource.clip.name : "<missing>")}");
         }
 
         private IEnumerator ValidateCombatPhaseRest()
@@ -686,6 +725,15 @@ namespace MeixiEcho
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
 
+            if (Time.unscaledTime >= nextChapterTwoLookupAt)
+            {
+                nextChapterTwoLookupAt = Time.unscaledTime + 1f;
+                if (chapterTwoAdventureRuntime == null)
+                    chapterTwoAdventureRuntime = FindAnyObjectByType<ChapterTwoAdventureRuntime>();
+            }
+
+            if (PointerUiOpen && !sceneTransitionActive) MeixiCursorState.SetPointer();
+
             // Runtime-created route objects can disappear when Unity recompiles
             // scripts while Play Mode is open. Keep the entrance deterministic in
             // the Editor as well as in a standalone build.
@@ -696,6 +744,7 @@ namespace MeixiEcho
             }
 
             if (toastPanel != null && Time.unscaledTime > toastUntil) toastPanel.SetActive(false);
+            UpdateTerminalBookVisual();
             if (!started && titlePanel != null && titlePanel.activeSelf) UpdateTitleSaveMenuVisibility();
 
             if (titleCaptureWhenReady && titleScreenFx != null && titleScreenFx.IsReady)
@@ -714,6 +763,7 @@ namespace MeixiEcho
             {
                 if (!captureDone)
                 {
+                    if (groundWalkValidationTarget != null) CompleteGroundWalkValidation();
                     string screenshot = Path.Combine(Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath, captureFileName);
                     CaptureFrame(screenshot);
                     captureDone = true;
@@ -869,6 +919,43 @@ namespace MeixiEcho
                 return;
             }
 
+            // Terminal-book pages own the pointer and keyboard while the final book
+            // is open. A click on the action buttons still keeps their original
+            // routing; a click on the page advances it.
+            if (complete && terminalEndingOpen && endingPanel.activeSelf)
+            {
+                if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                {
+                    Vector2 pointer = mouse.position.ReadValue();
+                    if (IsPointerInsideButton(endingNextChapterButton, pointer)) ReturnToTheatreAfterFinale();
+                    else if (IsPointerInsideButton(endingReplayButton, pointer)) ReturnToTitleAfterFinale();
+                    else AdvanceTerminalEndingPage(1);
+                    return;
+                }
+                if (keyboard != null)
+                {
+                    if (keyboard.escapeKey.wasPressedThisFrame)
+                    {
+                        ReturnToTitleAfterFinale();
+                        return;
+                    }
+                    if (keyboard.leftArrowKey.wasPressedThisFrame || keyboard.upArrowKey.wasPressedThisFrame ||
+                        keyboard.aKey.wasPressedThisFrame)
+                    {
+                        AdvanceTerminalEndingPage(-1);
+                        return;
+                    }
+                    if (keyboard.rightArrowKey.wasPressedThisFrame || keyboard.downArrowKey.wasPressedThisFrame ||
+                        keyboard.dKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame ||
+                        keyboard.enterKey.wasPressedThisFrame || keyboard.eKey.wasPressedThisFrame)
+                    {
+                        AdvanceTerminalEndingPage(1);
+                        return;
+                    }
+                }
+                return;
+            }
+
             // Independent pointer path for the ending screen. It deliberately does
             // not rely on EventSystem so the visible buttons remain clickable even
             // if a runtime UI action module loses its mouse bindings.
@@ -877,14 +964,22 @@ namespace MeixiEcho
                 Vector2 pointer = mouse.position.ReadValue();
                 if (IsPointerInsideButton(endingNextChapterButton, pointer))
                 {
-                    Debug.Log("[MeixiUI] Direct pointer accepted: second chapter.");
-                    LoadSecondChapter();
+                    if (terminalEndingOpen) ReturnToTheatreAfterFinale();
+                    else
+                    {
+                        Debug.Log("[MeixiUI] Direct pointer accepted: second chapter.");
+                        LoadSecondChapter();
+                    }
                     return;
                 }
                 if (IsPointerInsideButton(endingReplayButton, pointer))
                 {
-                    Debug.Log("[MeixiUI] Direct pointer accepted: replay.");
-                    RestartFirstChapter();
+                    if (terminalEndingOpen) ReturnToTitleAfterFinale();
+                    else
+                    {
+                        Debug.Log("[MeixiUI] Direct pointer accepted: replay.");
+                        RestartFirstChapter();
+                    }
                     return;
                 }
             }
@@ -915,7 +1010,10 @@ namespace MeixiEcho
             {
                 if (keyboard.enterKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame ||
                     keyboard.eKey.wasPressedThisFrame)
-                    LoadSecondChapter();
+                {
+                    if (terminalEndingOpen) ReturnToTitleAfterFinale();
+                    else LoadSecondChapter();
+                }
                 return;
             }
 
@@ -949,9 +1047,8 @@ namespace MeixiEcho
                 : null;
             if (activeController != null && !activeController.enabled) activeController.enabled = true;
 
-            bool needsPointer = !started || dialogueOpen || complete || paused;
-            Cursor.lockState = needsPointer ? CursorLockMode.None : CursorLockMode.Locked;
-            Cursor.visible = needsPointer;
+            if (PointerUiOpen) MeixiCursorState.SetPointer();
+            else MeixiCursorState.SetGameplay();
             player?.ResetInputTransientState();
             orbitCamera?.ClearInputAfterFocus();
         }
@@ -1038,6 +1135,14 @@ namespace MeixiEcho
             musicSource.spatialBlend = 0f;
             musicSource.loop = true;
             musicSource.volume = 0.36f;
+            terminalEndingMusicSource = gameObject.AddComponent<AudioSource>();
+            terminalEndingMusicSource.playOnAwake = false;
+            terminalEndingMusicSource.loop = false;
+            terminalEndingMusicSource.spatialBlend = 0f;
+            terminalEndingMusicSource.ignoreListenerPause = true;
+            terminalEndingMusicSource.clip = Resources.Load<AudioClip>("Audio/EndingTheme");
+            if (terminalEndingMusicSource.clip == null)
+                Debug.LogWarning("[MeixiFinalBook] EndingTheme was not found at Resources/Audio/EndingTheme.");
             lowTone = CreateTone("鼓点", 196f, 0.18f, 0.38f);
             highTone = CreateTone("铃音", 440f, 0.15f, 0.30f);
             successTone = CreateTone("魂音共鸣", 660f, 0.72f, 0.30f);
@@ -1255,10 +1360,11 @@ namespace MeixiEcho
             GameObject bridgeCollision = CreateCube("石拱桥隐形碰撞", new Vector3(-10.5f, 0.65f, -10.3f), new Vector3(3.2f, 0.45f, 8f), stone, true);
             bridgeCollision.GetComponent<Renderer>().enabled = false;
             CreateVillageModel("building_bridge_A", new Vector3(-10.5f, 0.32f, -10.3f), 0f, 2.15f, "梅溪石桥");
-            for (int i = 0; i < 7; i++)
-            {
-                CreateVillageModel(i % 2 == 0 ? "waterplant_A" : "waterlily_A", new Vector3(-18f + i * 4.5f, 0f, -12f + Mathf.Sin(i) * 1.5f), i * 37f, 0.45f, "溪畔水草");
-            }
+            // The legacy waterplant/waterlily meshes are crossed transparent cards.
+            // Their imported alpha is incompatible with the shared village atlas and
+            // can appear as dark rectangular stickers after a chapter rebuild. The
+            // realistic environment already supplies mesh grass along both banks, so
+            // do not instantiate these redundant cards at all.
             for (int i = 0; i < 18; i++)
             {
                 float x = -20f + i * 2.45f;
@@ -1482,15 +1588,9 @@ namespace MeixiEcho
                 }
             }
 
-            // 短草与蕨类使用现有水草模型，形成溪岸过渡层。
-            for (int i = 0; i < 22; i++)
-            {
-                float angle = i * 137.5f * Mathf.Deg2Rad;
-                float radius = 6.5f + (i % 5) * 2.25f;
-                Vector3 p = new(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius + 2f);
-                if (Mathf.Abs(p.z + 10f) < 3.2f) continue;
-                CreateVillageModel("waterplant_A", p, i * 47f, 0.24f + (i % 3) * 0.06f, "湿地蕨草");
-            }
+            // The realistic environment supplies true mesh grass and fern-like
+            // bank blades. Do not add the old waterplant cards here: when their
+            // alpha import falls back to the village atlas they become dark stickers.
         }
 
         private static void AddTreeCollider(GameObject tree)
@@ -3127,8 +3227,7 @@ namespace MeixiEcho
             gameplayGuidePanel.transform.SetAsLastSibling();
             Time.timeScale = 0f;
             AudioListener.pause = true;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             player?.ResetInputTransientState();
             orbitCamera?.ClearInputAfterFocus();
         }
@@ -3140,8 +3239,7 @@ namespace MeixiEcho
             if (gameplayGuidePanel != null) gameplayGuidePanel.SetActive(false);
             Time.timeScale = gameplayGuidePreviousTimeScale > 0f ? gameplayGuidePreviousTimeScale : 1f;
             AudioListener.pause = gameplayGuidePreviousAudioPause;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            MeixiCursorState.SetGameplay();
             player?.ResetInputTransientState();
             orbitCamera?.ClearInputAfterFocus();
             Action callback = gameplayGuideCallback;
@@ -3410,19 +3508,44 @@ namespace MeixiEcho
         {
             endingPanel = CreatePanel("结局", canvas.transform, Color.white, Vector2.zero, Vector2.one);
             ApplyTexture(endingPanel, "Art/ChapterBackdrop");
-            var title = CreateText("结局标题", endingPanel.transform, "第 一 章 · 溪 声 归 来", 62, TextAnchor.MiddleCenter, new Color(1f, 0.76f, 0.30f));
-            SetRect(title.rectTransform, new Vector2(0.12f, 0.66f), new Vector2(0.88f, 0.79f), Vector2.zero, Vector2.zero);
-            DecorateText(title, Color.black, new Vector2(4f, -4f), true);
-            var story = CreateText("结局文字", endingPanel.transform,
+            endingTitleText = CreateText("结局标题", endingPanel.transform, "第 一 章 · 溪 声 归 来", 62, TextAnchor.MiddleCenter, new Color(1f, 0.76f, 0.30f));
+            SetRect(endingTitleText.rectTransform, new Vector2(0.12f, 0.66f), new Vector2(0.88f, 0.79f), Vector2.zero, Vector2.zero);
+            DecorateText(endingTitleText, Color.black, new Vector2(4f, -4f), true);
+            endingStoryText = CreateText("结局文字", endingPanel.transform,
                 "溪灵散作水滴，沉默多年的泉声重新穿过石桥。\n\n林默第一次明白：声音并不只是可计算的波形。\n它记得孩子如何醒来，也记得土地如何被人聆听。\n\n——《梅溪回响》第一章体验结束——",
                 29, TextAnchor.MiddleCenter, Color.white);
-            SetRect(story.rectTransform, new Vector2(0.18f, 0.28f), new Vector2(0.82f, 0.64f), Vector2.zero, Vector2.zero);
+            SetRect(endingStoryText.rectTransform, new Vector2(0.18f, 0.28f), new Vector2(0.82f, 0.64f), Vector2.zero, Vector2.zero);
             endingReplayButton = CreateButton("再次聆听", endingPanel.transform, "再 次 聆 听", new Color(0.62f, 0.18f, 0.07f, 0.96f));
             SetRect(endingReplayButton.GetComponent<RectTransform>(), new Vector2(0.31f, 0.12f), new Vector2(0.48f, 0.20f), Vector2.zero, Vector2.zero);
             endingReplayButton.onClick.AddListener(RestartFirstChapter);
             endingNextChapterButton = CreateButton("继续旅程", endingPanel.transform, "继 续 · 前 往 古 戏 台", new Color(0.06f, 0.30f, 0.34f, 0.98f));
             SetRect(endingNextChapterButton.GetComponent<RectTransform>(), new Vector2(0.52f, 0.12f), new Vector2(0.69f, 0.20f), Vector2.zero, Vector2.zero);
             endingNextChapterButton.onClick.AddListener(LoadSecondChapter);
+            terminalEndingPageRoot = new GameObject("终末之书翻页层");
+            terminalEndingPageRoot.transform.SetParent(endingPanel.transform, false);
+            RectTransform terminalPageRect = terminalEndingPageRoot.AddComponent<RectTransform>();
+            terminalPageRect.anchorMin = Vector2.zero;
+            terminalPageRect.anchorMax = Vector2.one;
+            terminalPageRect.offsetMin = Vector2.zero;
+            terminalPageRect.offsetMax = Vector2.zero;
+            terminalEndingPageTitle = CreateText("终末之书页标题", terminalEndingPageRoot.transform, "余音未散", 42,
+                TextAnchor.MiddleLeft, new Color(.30f, .18f, .08f));
+            terminalEndingPageTitle.font = displayFont;
+            SetRect(terminalEndingPageTitle.rectTransform, new Vector2(.555f, .69f), new Vector2(.855f, .79f), Vector2.zero, Vector2.zero);
+            terminalEndingPageBody = CreateText("终末之书页正文", terminalEndingPageRoot.transform, string.Empty, 27,
+                TextAnchor.UpperLeft, new Color(.10f, .078f, .052f));
+            terminalEndingPageBody.font = displayFont;
+            terminalEndingPageBody.lineSpacing = 1.32f;
+            SetRect(terminalEndingPageBody.rectTransform, new Vector2(.555f, .285f), new Vector2(.855f, .675f), Vector2.zero, Vector2.zero);
+            terminalEndingPageNumber = CreateText("终末之书页码", terminalEndingPageRoot.transform, "01  /  05", 15,
+                TextAnchor.MiddleRight, new Color(.25f, .38f, .34f));
+            SetRect(terminalEndingPageNumber.rectTransform, new Vector2(.735f, .79f), new Vector2(.855f, .835f), Vector2.zero, Vector2.zero);
+            terminalEndingNavigation = CreateText("终末之书翻页提示", terminalEndingPageRoot.transform,
+                "A / 左键  上一页       SPACE / ENTER  下一页", 16, TextAnchor.MiddleRight,
+                new Color(.14f, .32f, .29f));
+            SetRect(terminalEndingNavigation.rectTransform, new Vector2(.53f, .205f), new Vector2(.855f, .255f), Vector2.zero, Vector2.zero);
+            LoadTerminalEndingPages();
+            terminalEndingPageRoot.SetActive(false);
             endingPanel.SetActive(false);
             if (loadingPanel != null) loadingPanel.SetActive(false);
         }
@@ -3564,8 +3687,7 @@ namespace MeixiEcho
             if (titleDeleteConfirmPanel != null) titleDeleteConfirmPanel.SetActive(false);
             RefreshTitleSaveUi();
             if (interactionCard != null) interactionCard.SetActive(false);
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             if (transitionGroup != null)
             {
                 transitionGroup.alpha = 1f;
@@ -3579,10 +3701,14 @@ namespace MeixiEcho
         {
             string[] arguments = Environment.GetCommandLineArgs();
             bool titleRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiTitleCapture", StringComparison.OrdinalIgnoreCase));
+            bool terminalBookRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiTerminalBookCapture", StringComparison.OrdinalIgnoreCase));
             bool settingsRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiSettingsCapture", StringComparison.OrdinalIgnoreCase));
             bool openingRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiOpeningCapture", StringComparison.OrdinalIgnoreCase));
             bool chapterRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiChapterCapture", StringComparison.OrdinalIgnoreCase));
             bool villageRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiVillageCapture", StringComparison.OrdinalIgnoreCase));
+            bool waterRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiWaterCapture", StringComparison.OrdinalIgnoreCase));
+            bool bridgeRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiBridgeCapture", StringComparison.OrdinalIgnoreCase));
+            bool groundWalkRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiGroundWalkCapture", StringComparison.OrdinalIgnoreCase));
             bool dialogueRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiDialogueCapture", StringComparison.OrdinalIgnoreCase));
             bool childRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiChildCapture", StringComparison.OrdinalIgnoreCase));
             bool guideRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiGuideCapture", StringComparison.OrdinalIgnoreCase));
@@ -3602,7 +3728,7 @@ namespace MeixiEcho
             bool phaseThreeGuideRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiPhaseThreeGuideCapture", StringComparison.OrdinalIgnoreCase));
             bool dashRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiEnemyDashCapture", StringComparison.OrdinalIgnoreCase));
             bool tripleSlashRequested = Array.Exists(arguments, value => string.Equals(value, "-meixiTripleSlashCapture", StringComparison.OrdinalIgnoreCase));
-            bool requested = Application.isBatchMode || titleRequested || settingsRequested || openingRequested || chapterRequested || villageRequested || dialogueRequested || childRequested || guideRequested || battleGuideRequested || animationRequested || animationAltRequested || rhythmAutoRequested || finisherRequested || meleeRequested ||
+            bool requested = Application.isBatchMode || titleRequested || terminalBookRequested || settingsRequested || openingRequested || chapterRequested || villageRequested || waterRequested || bridgeRequested || groundWalkRequested || dialogueRequested || childRequested || guideRequested || battleGuideRequested || animationRequested || animationAltRequested || rhythmAutoRequested || finisherRequested || meleeRequested ||
                              rangedCounterRequested || wrongMeleeRequested || flowRequested || defeatRequested || phaseRequested || healthRequested || dualHandRequested || phaseThreeGuideRequested || dashRequested || tripleSlashRequested ||
                              Array.Exists(arguments, value => string.Equals(value, "-meixiCapture", StringComparison.OrdinalIgnoreCase));
             if (!requested) return;
@@ -3613,6 +3739,29 @@ namespace MeixiEcho
                 captureAt = float.PositiveInfinity;
                 titleCaptureWhenReady = true;
                 ShowTitle();
+                return;
+            }
+            if (terminalBookRequested)
+            {
+                CompleteTransitionImmediatelyForValidation();
+                captureFileName = "MeixiTerminalBookCapture.png";
+                captureAt = Time.unscaledTime + 3.20f;
+                started = true;
+                titlePanel.SetActive(false);
+                hudPanel.SetActive(false);
+                openingActive = false;
+                openingPanel.SetActive(false);
+                dialoguePanel.SetActive(false);
+                chapterPanel.SetActive(false);
+                endingPanel.SetActive(false);
+                pausePanel.SetActive(false);
+                // Present the terminal book before scheduling the capture so the validation
+                // frame cannot race the presentation coroutine and capture the village scene.
+                PresentTerminalBookEnding();
+                Debug.Log($"[MeixiFinalBook] validation pages={terminalEndingPageBodies.Length} " +
+                          $"page={terminalEndingPageIndex + 1} musicPlaying={terminalEndingMusicSource != null && terminalEndingMusicSource.isPlaying} " +
+                          $"musicClip={(terminalEndingMusicSource != null && terminalEndingMusicSource.clip != null ? terminalEndingMusicSource.clip.name : "<missing>")}");
+                captureAt = Time.unscaledTime + 3.20f;
                 return;
             }
             if (settingsRequested)
@@ -3688,8 +3837,7 @@ namespace MeixiEcho
                 endingPanel.SetActive(false);
                 pausePanel.SetActive(false);
                 if (interactionCard != null) interactionCard.SetActive(false);
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+            MeixiCursorState.SetPointer();
                 StartCoroutine(ValidateInteractionToCombatFlow());
                 return;
             }
@@ -3735,20 +3883,23 @@ namespace MeixiEcho
                     previewCamera.nearClipPlane = .03f;
                 }
                 else Debug.LogError("[MeixiChildCapture] Child NPC or orbit camera was not available.");
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+            MeixiCursorState.SetPointer();
                 return;
             }
-            if (villageRequested || dialogueRequested)
+            if (villageRequested || waterRequested || bridgeRequested || groundWalkRequested || dialogueRequested)
             {
                 // Environment review captures must not land on the startup/title
                 // fade. Normal players still see the complete transition sequence.
                 CompleteTransitionImmediatelyForValidation();
-                captureFileName = dialogueRequested ? "MeixiDialogueCapture.png" : "MeixiVillageCapture.png";
-                captureAt = dialogueRequested ? float.PositiveInfinity : Time.unscaledTime + 2.2f;
+                captureFileName = dialogueRequested ? "MeixiDialogueCapture.png" :
+                    waterRequested ? "MeixiWaterCapture.png" :
+                    bridgeRequested ? "MeixiBridgeCapture.png" :
+                    groundWalkRequested ? "MeixiGroundWalkCapture.png" : "MeixiVillageCapture.png";
+                captureAt = dialogueRequested || groundWalkRequested ? float.PositiveInfinity : Time.unscaledTime +
+                    (waterRequested ? .72f : groundWalkRequested ? 3.40f : 2.2f);
                 started = true;
                 titlePanel.SetActive(false);
-                hudPanel.SetActive(!dialogueRequested);
+                hudPanel.SetActive(!dialogueRequested && !waterRequested && !bridgeRequested && !groundWalkRequested);
                 openingActive = false;
                 openingPanel.SetActive(false);
                 chapterPanel.SetActive(false);
@@ -3759,25 +3910,73 @@ namespace MeixiEcho
                 if (previewController != null) previewController.enabled = false;
                 if (playerTransform != null)
                 {
-                    playerTransform.position = new Vector3(0.2f, 0.30f, 1.2f);
-                    playerTransform.rotation = Quaternion.Euler(0f, 24f, 0f);
+                    if (bridgeRequested)
+                    {
+                        playerTransform.position = new Vector3(-10.5f, .10f, -15.15f);
+                        playerTransform.rotation = Quaternion.Euler(0f, 0f, 0f);
+                    }
+                    else if (waterRequested || groundWalkRequested)
+                    {
+                        const float waterX = 4.9f;
+                        float waterZ = -11f + Mathf.Sin((waterX + 15f) * .21f) * 2f +
+                            Mathf.Sin((waterX - 4f) * .075f) * .34f;
+                        playerTransform.position = groundWalkRequested
+                            ? new Vector3(waterX, .08f, waterZ + 4.15f)
+                            : new Vector3(waterX, -.54f, waterZ);
+                        playerTransform.rotation = Quaternion.Euler(0f, 72f, 0f);
+                        if (waterRequested) MeixiInteractiveCreek.EmitValidationInteraction(playerTransform.position);
+                    }
+                    else
+                    {
+                        playerTransform.position = new Vector3(0.2f, 0.30f, 1.2f);
+                        playerTransform.rotation = Quaternion.Euler(0f, 24f, 0f);
+                    }
                 }
                 if (previewController != null) previewController.enabled = true;
-                if (villageRequested && orbitCamera != null)
+                if (groundWalkRequested && playerTransform != null)
+                {
+                    StartCoroutine(BeginGroundWalkValidation());
+                }
+                if ((villageRequested || waterRequested || bridgeRequested || groundWalkRequested) && orbitCamera != null)
                 {
                     // Automated environment review needs a stable establishing shot.
                     // The regular follow camera eases from its authored scene position
                     // and can briefly pass through the player after the preview teleport.
                     Camera previewCamera = orbitCamera.GetComponent<Camera>();
                     orbitCamera.enabled = false;
-                    previewCamera.transform.position = new Vector3(-18.5f, 11.8f, -20.5f);
-                    previewCamera.transform.rotation = Quaternion.LookRotation(
-                        new Vector3(0.5f, 2.2f, 6.5f) - previewCamera.transform.position,
-                        Vector3.up);
+                    if (bridgeRequested)
+                    {
+                        Vector3 focus = new(-10.5f, .48f, -10.3f);
+                        previewCamera.transform.position = focus + new Vector3(-5.9f, 3.45f, -5.6f);
+                        previewCamera.transform.rotation = Quaternion.LookRotation(
+                            focus + new Vector3(.25f, .16f, .15f) - previewCamera.transform.position, Vector3.up);
+                        previewCamera.fieldOfView = 42f;
+                        previewCamera.nearClipPlane = .04f;
+                    }
+                    else if (waterRequested || groundWalkRequested)
+                    {
+                        const float captureX = 4.9f;
+                        float captureZ = -11f + Mathf.Sin((captureX + 15f) * .21f) * 2f +
+                            Mathf.Sin((captureX - 4f) * .075f) * .34f;
+                        Vector3 focus = new(captureX, -.22f, captureZ);
+                        previewCamera.transform.position = focus + (groundWalkRequested
+                            ? new Vector3(-5.8f, 4.1f, -4.8f)
+                            : new Vector3(-3.8f, 2.25f, -3.6f));
+                        previewCamera.transform.rotation = Quaternion.LookRotation(focus + new Vector3(.9f, 0f, .35f) -
+                            previewCamera.transform.position, Vector3.up);
+                        previewCamera.fieldOfView = groundWalkRequested ? 50f : 43f;
+                        previewCamera.nearClipPlane = .05f;
+                    }
+                    else
+                    {
+                        previewCamera.transform.position = new Vector3(-18.5f, 11.8f, -20.5f);
+                        previewCamera.transform.rotation = Quaternion.LookRotation(
+                            new Vector3(0.5f, 2.2f, 6.5f) - previewCamera.transform.position,
+                            Vector3.up);
+                    }
                 }
                 if (dialogueRequested) StartCoroutine(PrepareDialogueCapture());
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+            MeixiCursorState.SetPointer();
                 return;
             }
             if (animationRequested || animationAltRequested)
@@ -3807,8 +4006,7 @@ namespace MeixiEcho
                 }
                 else Debug.LogError("[MeixiAnimationPreview] No runtime player was available for locomotion validation.");
                 orbitCamera?.BeginAnimationPreviewFocus();
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+            MeixiCursorState.SetPointer();
                 return;
             }
             rhythmAutoValidation = rhythmAutoRequested;
@@ -3902,8 +4100,7 @@ namespace MeixiEcho
                 UpdateHealth();
                 captureAt = Time.unscaledTime + 0.22f;
             }
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
         }
 
         private IEnumerator ScheduleCombatReviewCapture(float delay)
@@ -4096,8 +4293,7 @@ namespace MeixiEcho
             RefreshPauseSettingsUi();
             pauseSettingsPanel.SetActive(true);
             pauseSettingsPanel.transform.SetAsLastSibling();
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
         }
 
         private void ClosePauseSettings()
@@ -4172,6 +4368,73 @@ namespace MeixiEcho
                     ReactivateTerminalInput();
                     break;
             }
+        }
+
+        private void CompleteGroundWalkValidation()
+        {
+            if (groundWalkValidationTarget == null) return;
+            Vector3 end = groundWalkValidationTarget.position;
+            bool crossedCreek = end.z < groundWalkValidationStart.z - 7.0f;
+            bool heightValid = end.y > -1.10f;
+            bool grounded = groundWalkValidationController != null && groundWalkValidationController.enabled &&
+                            groundWalkValidationController.isGrounded;
+            string result = $"[MeixiGroundWalk] start={groundWalkValidationStart} end={end} crossed={crossedCreek} " +
+                            $"heightValid={heightValid} grounded={grounded} canMove={CanPlayerMove}";
+            if (crossedCreek && heightValid) Debug.Log(result);
+            else Debug.LogError(result);
+            groundWalkValidationTarget = null;
+            groundWalkValidationController = null;
+        }
+
+        private IEnumerator BeginGroundWalkValidation()
+        {
+            yield return null;
+            CompleteTransitionImmediatelyForValidation();
+            BeginAdventurePresentation();
+            FinishOpeningSequence(true);
+            if (chapterPanel != null && chapterPanel.activeSelf) FinishChapterCardImmediately();
+            while (dialogueOpen) AdvanceDialogue();
+            yield return null;
+
+            gameplayGuideOpen = false;
+            phaseThreeGuideOpen = false;
+            defeatOpen = false;
+            paused = false;
+            finishingStrike = false;
+            complete = false;
+            rhythmActive = false;
+            cinematicInputLockedUntil = 0f;
+            sceneTransitionActive = false;
+            if (gameplayGuidePanel != null) gameplayGuidePanel.SetActive(false);
+
+            MeixiThirdPersonPlayer validationPlayer = player ??
+                                                        playerTransform?.GetComponent<MeixiThirdPersonPlayer>();
+            CharacterController validationController = playerTransform != null
+                ? playerTransform.GetComponent<CharacterController>()
+                : null;
+            if (validationPlayer == null || validationController == null || playerTransform == null)
+            {
+                Debug.LogError("[MeixiGroundWalk] Player or CharacterController missing after startup initialization.");
+                yield break;
+            }
+
+            const float waterX = 4.9f;
+            float waterZ = -11f + Mathf.Sin((waterX + 15f) * .21f) * 2f +
+                Mathf.Sin((waterX - 4f) * .075f) * .34f;
+            validationController.enabled = false;
+            playerTransform.position = new Vector3(waterX, .08f, waterZ + 4.15f);
+            playerTransform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            validationController.enabled = true;
+            Physics.SyncTransforms();
+
+            groundWalkValidationTarget = playerTransform;
+            groundWalkValidationController = validationController;
+            groundWalkValidationStart = playerTransform.position;
+            validationPlayer.InjectValidationWorldMove(Vector3.back, 3.0f);
+            captureDone = false;
+            captureAt = Time.unscaledTime + 3.65f;
+            Debug.Log($"[MeixiGroundWalk] begin={groundWalkValidationStart} keyboard={Keyboard.current != null} " +
+                      $"canMove={CanPlayerMove} controller={validationController.enabled}");
         }
 
         private void ReactivateTerminalInput()
@@ -4272,8 +4535,8 @@ namespace MeixiEcho
             bool presentationNeedsPointer = openingActive || dialogueOpen || complete || secondChapterLoading ||
                                             (titlePanel != null && titlePanel.activeSelf);
             bool showPointer = paused || presentationNeedsPointer;
-            Cursor.lockState = showPointer ? CursorLockMode.None : CursorLockMode.Locked;
-            Cursor.visible = showPointer;
+            if (showPointer) MeixiCursorState.SetPointer();
+            else MeixiCursorState.SetGameplay();
             if (paused && interactionCard != null) interactionCard.SetActive(false);
             player?.ResetInputTransientState();
             orbitCamera?.ClearInputAfterFocus();
@@ -4356,8 +4619,7 @@ namespace MeixiEcho
             }
             Time.timeScale = 0f;
             AudioListener.pause = true;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             Debug.Log("[MeixiDefeat] Echo depleted. Waiting for retry or quit selection.");
         }
 
@@ -4366,8 +4628,7 @@ namespace MeixiEcho
             Time.timeScale = 1f;
             AudioListener.pause = false;
             musicSource?.Stop();
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             Debug.Log("[MeixiPause] Quit requested from pause menu.");
             Application.Quit(0);
         }
@@ -4376,14 +4637,18 @@ namespace MeixiEcho
         {
             Vector3 playerPosition = PlayerPosition;
             int targetIndex = Mathf.Clamp(completedMemories, 0, nodePositions.Length - 1);
-            Vector3 targetPosition = secondChapterRouteActive
+            Vector3 targetPosition = terminalBookReturnActive && terminalBook != null
+                ? terminalBookBasePosition
+                : secondChapterRouteActive
                 ? MeixiSecondChapterRoute.EntrancePosition
                 : nodePositions[targetIndex];
             Vector3 delta = targetPosition - playerPosition;
             float distance = new Vector2(delta.x, delta.z).magnitude;
             if (navigationText != null)
             {
-                navigationText.text = secondChapterRouteActive
+                navigationText.text = terminalBookReturnActive && terminalBook != null
+                    ? $"终末之书  {distance:0}m"
+                    : secondChapterRouteActive
                     ? $"第二章入口  {distance:0}m"
                     : completedMemories >= nodePositions.Length ? "魂音已完整" : $"{chapterNames[targetIndex].Replace(" ", "")}  {distance:0}m";
             }
@@ -4581,12 +4846,319 @@ namespace MeixiEcho
             started = true;
             Debug.Log("[Meixi] StartAdventure accepted; opening cinematic begins.");
             titlePanel.SetActive(false);
+
+            if (MeixiLocalProgress.IsCheckpoint("ChapterOnePhaseTwoEnd"))
+            {
+                openingActive = false;
+                openingPanel.SetActive(false);
+                hudPanel.SetActive(true);
+                respawnPoint = nodePositions[0];
+                if (playerTransform != null)
+                {
+                    CharacterController activeController = playerTransform.GetComponent<CharacterController>();
+                    if (activeController != null) activeController.enabled = false;
+                    playerTransform.SetPositionAndRotation(respawnPoint, Quaternion.identity);
+                    if (activeController != null) activeController.enabled = true;
+                }
+                player?.ResetForNewSession();
+                orbitCamera?.ResetGameplayView();
+                BeginChapterOneCombatCore(true);
+                ShowToast("已读取第二阶段结束存档 · 进入第三阶段教学", new Color(1f, .48f, .30f));
+                return;
+            }
+
             hudPanel.SetActive(false);
             openingActive = true;
             openingPanel.SetActive(true);
             SetOpeningDiaryPage(0);
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
+        }
+
+        private IEnumerator ResumeTerminalBookReturnRoutine()
+        {
+            yield return null;
+            while (titleScreenFx != null && !titleScreenFx.IsReady) yield return null;
+            if (started || sceneTransitionActive || !MeixiLocalProgress.TerminalBookPending) yield break;
+            BeginScreenTransition("余 音 归 溪", PresentTerminalBookReturn, .48f, .10f, .72f);
+        }
+
+        private void PresentTerminalBookReturn()
+        {
+            if (useSceneAuthoredWorld && (player == null || playerTransform == null || orbitCamera == null))
+                BindSceneAuthoredWorld();
+            ResetGameplaySession();
+            MeixiChapterOneEnvironment.Ensure();
+            MeixiSecondChapterRoute.Ensure(this);
+            started = true;
+            terminalBookReturnActive = true;
+            terminalEndingOpen = false;
+            titlePanel.SetActive(false);
+            openingPanel.SetActive(false);
+            chapterPanel.SetActive(false);
+            endingPanel.SetActive(false);
+            hudPanel.SetActive(true);
+
+            respawnPoint = new Vector3(0f, .3f, -6.2f);
+            if (playerTransform != null)
+            {
+                CharacterController activeController = playerTransform.GetComponent<CharacterController>();
+                if (activeController != null) activeController.enabled = false;
+                playerTransform.SetPositionAndRotation(respawnPoint, Quaternion.identity);
+                if (activeController != null) activeController.enabled = true;
+            }
+            player?.ResetForNewSession();
+            orbitCamera?.ResetGameplayView();
+            orbitCamera?.BeginOpeningShot(2.2f);
+            PlayChapterOneExplorationMusic();
+            SpawnTerminalBook();
+
+            chapterHudText.text = "终章 · 余音归溪";
+            storyProgressText.text = "终章  ·  两章回响已经归位";
+            objectiveText.text = "前往村庄中央，拾取从古戏台归来的终末之书";
+            MeixiCursorState.SetGameplay();
+            ShowToast("终末之书已在村庄中央显现", new Color(.40f, .94f, .88f));
+            Debug.Log("[MeixiFinalBook] Chapter-two return resumed in the village.");
+        }
+
+        private void SpawnTerminalBook()
+        {
+            if (terminalBook != null) Destroy(terminalBook);
+            terminalBook = new GameObject("梅溪村中央_终末之书");
+            terminalBookBasePosition = new Vector3(0f, 1.18f, 0f);
+            terminalBook.transform.SetPositionAndRotation(terminalBookBasePosition, Quaternion.Euler(-5f, 0f, 0f));
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material cover = new(shader) { name = "终末之书_墨青封面", color = new Color(.025f, .12f, .13f) };
+            Material paper = new(shader) { name = "终末之书_旧纸", color = new Color(.87f, .75f, .52f) };
+            Material gold = new(shader) { name = "终末之书_余音金线", color = new Color(.82f, .55f, .16f) };
+            if (cover.HasProperty("_Smoothness")) cover.SetFloat("_Smoothness", .28f);
+            if (paper.HasProperty("_Smoothness")) paper.SetFloat("_Smoothness", .06f);
+            if (gold.HasProperty("_Metallic")) gold.SetFloat("_Metallic", .58f);
+            if (gold.HasProperty("_Smoothness")) gold.SetFloat("_Smoothness", .52f);
+
+            CreatePart("下封面", new Vector3(0f, -.10f, 0f), new Vector3(1.62f, .09f, 1.12f), Quaternion.identity, cover);
+            CreatePart("左书页", new Vector3(-.41f, .015f, 0f), new Vector3(.78f, .10f, 1.02f), Quaternion.Euler(0f, 0f, -7f), paper);
+            CreatePart("右书页", new Vector3(.41f, .015f, 0f), new Vector3(.78f, .10f, 1.02f), Quaternion.Euler(0f, 0f, 7f), paper);
+            CreatePart("金色书脊", new Vector3(0f, .075f, 0f), new Vector3(.065f, .10f, 1.04f), Quaternion.identity, gold);
+            for (int i = -2; i <= 2; i++)
+                CreatePart("页上声纹_" + i, new Vector3(i * .135f, .155f + Mathf.Abs(i) * .006f, .03f),
+                    new Vector3(.018f, .014f, .54f - Mathf.Abs(i) * .06f), Quaternion.identity, gold);
+
+            Light glow = terminalBook.AddComponent<Light>();
+            glow.type = LightType.Point;
+            glow.color = new Color(.26f, .92f, .82f);
+            glow.range = 7.2f;
+            glow.intensity = 2.6f;
+            glow.shadows = LightShadows.None;
+
+            GameObject labelObject = new("终末之书_世界标题");
+            labelObject.transform.SetParent(terminalBook.transform, false);
+            labelObject.transform.localPosition = new Vector3(0f, 1.18f, 0f);
+            labelObject.transform.localRotation = Quaternion.identity;
+            TextMesh label = labelObject.AddComponent<TextMesh>();
+            label.text = "终末之书";
+            label.anchor = TextAnchor.MiddleCenter;
+            label.alignment = TextAlignment.Center;
+            label.fontSize = 72;
+            label.characterSize = .042f;
+            label.color = new Color(1f, .78f, .34f);
+            Font worldFont = Font.CreateDynamicFontFromOSFont(new[] { "STKaiti", "KaiTi", "Microsoft YaHei" }, 72);
+            if (worldFont != null)
+            {
+                label.font = worldFont;
+                label.GetComponent<MeshRenderer>().sharedMaterial = worldFont.material;
+            }
+
+            void CreatePart(string partName, Vector3 localPosition, Vector3 localScale,
+                Quaternion localRotation, Material material)
+            {
+                GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                part.name = partName;
+                part.transform.SetParent(terminalBook.transform, false);
+                part.transform.localPosition = localPosition;
+                part.transform.localRotation = localRotation;
+                part.transform.localScale = localScale;
+                part.GetComponent<Renderer>().sharedMaterial = material;
+                Collider collider = part.GetComponent<Collider>();
+                if (collider != null) Destroy(collider);
+            }
+        }
+
+        private void UpdateTerminalBookVisual()
+        {
+            if (terminalBook == null || !terminalBookReturnActive) return;
+            float wave = Mathf.Sin(Time.unscaledTime * 1.42f);
+            terminalBook.transform.position = terminalBookBasePosition + Vector3.up * (wave * .10f);
+            terminalBook.transform.Rotate(Vector3.up, Time.unscaledDeltaTime * 9f, Space.World);
+            Light glow = terminalBook.GetComponent<Light>();
+            if (glow != null) glow.intensity = 2.25f + (wave + 1f) * .34f;
+        }
+
+        private void CollectTerminalBook()
+        {
+            if (!terminalBookReturnActive || terminalBook == null || sceneTransitionActive) return;
+            MeixiLocalProgress.RecordFinalBookCollected();
+            terminalBookReturnActive = false;
+            Destroy(terminalBook);
+            terminalBook = null;
+            if (interactionCard != null) interactionCard.SetActive(false);
+            BeginScreenTransition("终 末 之 书", PresentTerminalBookEnding, .46f, .12f, .78f);
+        }
+
+        private void LoadTerminalEndingPages()
+        {
+            TextAsset endingAsset = Resources.Load<TextAsset>("EndingMessage");
+            string source = endingAsset != null ? endingAsset.text.Trim() : string.Empty;
+            if (string.IsNullOrEmpty(source))
+            {
+                terminalEndingPageTitles = new[] { "余音未散" };
+                terminalEndingPageBodies = new[] { "终末之书的页页回响仍在继续。" };
+                return;
+            }
+
+            string[] sections = source.Replace("\r\n", "\n").Split(
+                new[] { "\n===PAGE===\n" }, StringSplitOptions.RemoveEmptyEntries);
+            List<string> titles = new();
+            List<string> bodies = new();
+            foreach (string rawSection in sections)
+            {
+                string section = rawSection.Trim();
+                int lineBreak = section.IndexOf('\n');
+                if (lineBreak < 0)
+                {
+                    titles.Add("余音");
+                    bodies.Add(section);
+                    continue;
+                }
+                titles.Add(section[..lineBreak].Trim());
+                bodies.Add(section[(lineBreak + 1)..].Trim());
+            }
+            terminalEndingPageTitles = titles.ToArray();
+            terminalEndingPageBodies = bodies.ToArray();
+        }
+
+        private void PresentTerminalEndingPage()
+        {
+            if (terminalEndingPageRoot == null) return;
+            if (terminalEndingPageBodies.Length == 0) LoadTerminalEndingPages();
+            if (terminalEndingPageBodies.Length == 0) return;
+            terminalEndingPageIndex = Mathf.Clamp(terminalEndingPageIndex, 0, terminalEndingPageBodies.Length - 1);
+            terminalEndingPageTitle.text = terminalEndingPageTitles[terminalEndingPageIndex];
+            terminalEndingPageBody.text = terminalEndingPageBodies[terminalEndingPageIndex];
+            terminalEndingPageBody.fontSize = terminalEndingPageIndex == terminalEndingPageBodies.Length - 1 ? 20 :
+                terminalEndingPageIndex == 3 ? 23 : 27;
+            terminalEndingPageNumber.text = $"{terminalEndingPageIndex + 1:00}  /  {terminalEndingPageBodies.Length:00}";
+            terminalEndingNavigation.text = terminalEndingPageIndex >= terminalEndingPageBodies.Length - 1
+                ? "A / 左键  上一页       ESC  返回标题"
+                : "A / 左键  上一页       SPACE / ENTER  下一页";
+        }
+
+        private void AdvanceTerminalEndingPage(int direction)
+        {
+            if (!terminalEndingOpen || Time.unscaledTime < terminalEndingInputReadyAt ||
+                terminalEndingPageBodies.Length == 0) return;
+            int next = terminalEndingPageIndex + Math.Sign(direction);
+            if (next < 0)
+            {
+                terminalEndingPageIndex = 0;
+                PresentTerminalEndingPage();
+                return;
+            }
+            if (next >= terminalEndingPageBodies.Length)
+            {
+                ReturnToTheatreAfterFinale();
+                return;
+            }
+            terminalEndingPageIndex = next;
+            PresentTerminalEndingPage();
+        }
+
+        private void PlayTerminalEndingMusic()
+        {
+            if (terminalEndingMusicSource == null || terminalEndingMusicSource.clip == null) return;
+            if (terminalEndingMusicFadeRoutine != null) StopCoroutine(terminalEndingMusicFadeRoutine);
+            if (musicSource != null) musicSource.Stop();
+            terminalEndingMusicSource.Stop();
+            terminalEndingMusicSource.volume = 0f;
+            terminalEndingMusicSource.Play();
+            terminalEndingMusicFadeRoutine = StartCoroutine(FadeTerminalEndingMusic());
+            Debug.Log("[MeixiFinalBook] EndingTheme started with terminal book.");
+        }
+
+        private IEnumerator FadeTerminalEndingMusic()
+        {
+            const float duration = 2.2f;
+            float elapsed = 0f;
+            while (elapsed < duration && terminalEndingMusicSource != null)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                terminalEndingMusicSource.volume = Mathf.SmoothStep(0f, .62f,
+                    Mathf.Clamp01(elapsed / duration));
+                yield return null;
+            }
+            if (terminalEndingMusicSource != null) terminalEndingMusicSource.volume = .62f;
+            terminalEndingMusicFadeRoutine = null;
+        }
+
+        private void StopTerminalEndingMusic()
+        {
+            if (terminalEndingMusicFadeRoutine != null)
+            {
+                StopCoroutine(terminalEndingMusicFadeRoutine);
+                terminalEndingMusicFadeRoutine = null;
+            }
+            if (terminalEndingMusicSource != null) terminalEndingMusicSource.Stop();
+        }
+
+        private void PresentTerminalBookEnding()
+        {
+            terminalEndingOpen = true;
+            complete = true;
+            hudPanel.SetActive(false);
+            ApplyTexture(endingPanel, "Art/EndingOpenBook");
+            endingTitleText.gameObject.SetActive(false);
+            endingStoryText.gameObject.SetActive(false);
+            terminalEndingPageIndex = 0;
+            terminalEndingInputReadyAt = Time.unscaledTime + .55f;
+            LoadTerminalEndingPages();
+            PresentTerminalEndingPage();
+            terminalEndingPageRoot.SetActive(true);
+            endingTitleText.text = "终 章 · 梅 溪 回 响";
+            endingTitleText.color = new Color(.10f, .23f, .22f);
+            endingStoryText.text =
+                "溪水记住了村庄，戏台记住了旧曲。\n\n林默把终末之书合在掌心，终于明白：\n真正被保存的从来不只是声音，\n而是仍愿意彼此聆听的人。\n\n—— 第一章、第二章 · 完 ——";
+            endingStoryText.color = new Color(.16f, .20f, .18f);
+            Text replayLabel = endingReplayButton.GetComponentInChildren<Text>();
+            Text nextLabel = endingNextChapterButton.GetComponentInChildren<Text>();
+            if (replayLabel != null) replayLabel.text = "返 回 标 题";
+            if (nextLabel != null) nextLabel.text = "重 返 古 戏 台";
+            endingReplayButton.onClick.RemoveAllListeners();
+            endingReplayButton.onClick.AddListener(ReturnToTitleAfterFinale);
+            endingNextChapterButton.onClick.RemoveAllListeners();
+            endingNextChapterButton.onClick.AddListener(ReturnToTheatreAfterFinale);
+            endingPanel.SetActive(true);
+            endingPanel.transform.SetAsLastSibling();
+            PlayTerminalEndingMusic();
+            MeixiCursorState.SetPointer();
+            Debug.Log("[MeixiFinalBook] Final book collected and finale presented.");
+        }
+
+        private void ReturnToTitleAfterFinale()
+        {
+            if (sceneTransitionActive) return;
+            terminalEndingOpen = false;
+            BeginScreenTransition("余 音 入 卷", ReloadFirstChapterScene, .48f, .10f, 0f);
+        }
+
+        private void ReturnToTheatreAfterFinale()
+        {
+            if (sceneTransitionActive) return;
+            terminalEndingOpen = false;
+            BeginScreenTransition("重 返 古 戏 台", () =>
+            {
+                Time.timeScale = 1f;
+                UnityEngine.SceneManagement.SceneManager.LoadScene("MeixiTheatre");
+            }, .48f, .10f, 0f);
         }
 
         private void ResetGameplaySession()
@@ -4649,6 +5221,12 @@ namespace MeixiEcho
             chapterOneSoulCollected = false;
             secondChapterLoading = false;
             secondChapterRouteActive = false;
+            terminalBookReturnActive = false;
+            terminalEndingOpen = false;
+            StopTerminalEndingMusic();
+            if (terminalEndingPageRoot != null) terminalEndingPageRoot.SetActive(false);
+            if (terminalBook != null) Destroy(terminalBook);
+            terminalBook = null;
             completedMemories = 0;
             defeatedEnemies = 0;
             health = 5;
@@ -4725,8 +5303,7 @@ namespace MeixiEcho
             openingActive = false;
             openingPanel.SetActive(false);
             hudPanel.SetActive(true);
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            MeixiCursorState.SetGameplay();
             orbitCamera?.BeginOpeningShot(2.7f);
             PlayChapterOneExplorationMusic();
             ShowChapterCard(-1, "第 一 章", "没 有 声 音 的 村 庄", "城市的喧闹在山路尽头突然消失", () =>
@@ -4842,8 +5419,7 @@ namespace MeixiEcho
             objectiveText.text = "沿村口青石路一直向北，前往亮着灯的古戏台入口";
             player?.ResetForNewSession();
             orbitCamera?.ResetGameplayView();
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            MeixiCursorState.SetGameplay();
             ShowToast("新目标：沿青石路前往古戏台", new Color(.42f, .92f, 1f));
             Debug.Log("[Meixi] Second chapter route unlocked; player control restored.");
         }
@@ -4874,8 +5450,7 @@ namespace MeixiEcho
             paused = false;
             finishingStrike = false;
             cinematicInputLockedUntil = 0f;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             hudPanel.SetActive(false);
             endingPanel.SetActive(false);
             if (loadingPanel != null)
@@ -4949,6 +5524,21 @@ namespace MeixiEcho
 
         private void UpdateInteraction(Keyboard keyboard)
         {
+            if (terminalBookReturnActive && terminalBook != null)
+            {
+                float bookDistance = HorizontalDistance(playerTransform.position, terminalBookBasePosition);
+                if (bookDistance < 4.25f)
+                {
+                    interactionCard.SetActive(true);
+                    interactionTitle.text = "拾 取 终 末 之 书";
+                    interactionTitle.color = new Color(1f, .82f, .40f);
+                    interactionSubtitle.text = "两章回响已汇入书页  ·  按 E 完成旅途";
+                    if (keyboard.eKey.wasPressedThisFrame) CollectTerminalBook();
+                }
+                else SetInteractionCard(null);
+                return;
+            }
+
             SoulNode3D nearest = null;
             float best = 4.25f;
             foreach (var node in nodes)
@@ -5159,10 +5749,10 @@ namespace MeixiEcho
         private void ActivateChapterOneCombat()
         {
             if (chapterOneCombatActive || complete) return;
-            ShowBattleGuide(BeginChapterOneCombatCore);
+            ShowBattleGuide(() => BeginChapterOneCombatCore());
         }
 
-        private void BeginChapterOneCombatCore()
+        private void BeginChapterOneCombatCore(bool resumeAtPhaseThree = false)
         {
             if (chapterOneCombatActive || complete) return;
             Debug.Log("[MeixiCombat] Chapter one start requested.");
@@ -5238,6 +5828,8 @@ namespace MeixiEcho
             musicSource.volume = 0.30f;
             musicSource.PlayScheduled(chapterOneBeatStart);
             creekSpirit.BeginBattle(chapterOneBeatStart, chapterOneCombatBpm);
+            if (resumeAtPhaseThree)
+                creekSpirit.PreparePhaseValidation(3);
             orbitCamera?.BeginCombatFocus(creekSpirit.transform);
             Debug.Log($"[MeixiCombat] Chapter one active enemy={creekSpirit.name} player={playerTransform.position} enemyPosition={creekSpirit.transform.position}");
             ShowToast("第一段 · 听潮：红区锁定时瞬身，随后自由反击", new Color(1f, 0.72f, 0.28f));
@@ -5538,7 +6130,7 @@ namespace MeixiEcho
                 2 => .10d,
                 _ => .15d
             });
-            expectedLeftHandHoldDuration = variation == 1 ? .62f : variation == 2 ? .78f : 0f;
+            expectedLeftHandHoldDuration = variation == 1 ? .52f : variation == 2 ? .64f : 0f;
             leftHandSucceeded = false;
             leftHandHolding = false;
             leftHandHoldProgress = 0f;
@@ -5978,7 +6570,9 @@ namespace MeixiEcho
             if (combatActionKey != null) combatActionKey.text = "✓";
             if (leftHandCueActive && leftHandActionKey != null) leftHandActionKey.text = "✓";
             orbitCamera?.TriggerCombatImpact(true);
-            audioSource.PlayOneShot(highTone, 0.75f);
+            if (expectedCombatAction != CombatBeatAction.AttackOne &&
+                expectedCombatAction != CombatBeatAction.AttackTwo)
+                audioSource.PlayOneShot(highTone, 0.75f);
             Debug.Log($"[MeixiBeat] success action={expectedCombatAction} threat={activeThreatId} input={now:F3}");
         }
 
@@ -6155,7 +6749,6 @@ namespace MeixiEcho
             if (combatActionKey != null) combatActionKey.text = "破";
             ShowToast("◆ 远 程 破 谱 · 和 弦 崩 解 ◆", new Color(0.30f, 1f, 0.92f));
             orbitCamera?.TriggerCombatImpact(true);
-            audioSource.PlayOneShot(highTone, 0.90f);
             if ((rhythmAutoValidation || rangedCounterValidation) && captureMode && !captureDone)
                 captureAt = Time.unscaledTime + 0.10f;
             Debug.Log($"[MeixiSpatial] Ranged counter success id={activeThreatId} delta={delta:F3} health={health}");
@@ -6347,7 +6940,6 @@ namespace MeixiEcho
                 action == CombatBeatAction.TripleJ ? 3 + stepIndex * 2 : 22 + stepIndex * 5,
                 action == CombatBeatAction.TripleJ ? 3.1f : 4.2f, CombatActionColor(action));
             orbitCamera?.TriggerMeleeImpact(Mathf.Clamp(stepIndex, 0, 2), true);
-            audioSource.PlayOneShot(stepKey == CombatInputKey.K || action == CombatBeatAction.AttackTwo ? highTone : lowTone, 0.82f);
             return true;
         }
 
@@ -6401,7 +6993,6 @@ namespace MeixiEcho
                 onBeat ? 3.0f + comboStep * 0.28f : 2.2f, onBeat ? 0.58f : 0.44f, onBeat ? 12 + comboStep * 2 : 8);
             PlayCombatResponseFx(CombatBeatAction.AttackOne, onBeat, false);
             orbitCamera?.TriggerMeleeImpact(comboStep, onBeat);
-            audioSource.PlayOneShot(lowTone, 0.82f);
             if (meleeAutoValidation && captureMode && !captureDone)
                 captureAt = Time.unscaledTime + 0.07f;
             Debug.Log($"[MeixiSpatial] Melee hit combo={comboStep + 1} onBeat={onBeat} counter={counterWindow}");
@@ -6418,7 +7009,6 @@ namespace MeixiEcho
             PlayerNoteWaveProjectile3D.Create(this, creekSpirit, origin, direction, cyan, gold, onBeat);
             PlayerCombatFlourish3D.CreateRangedCast(origin, direction, onBeat);
             SpawnGeneratedSlash(origin + direction * 0.55f, 1.35f, 24f, 0.30f, new Color(0.30f, 0.92f, 1f, 0.78f));
-            audioSource.PlayOneShot(highTone, 0.72f);
             rhythmJudge.text = onBeat ? "K 共鸣音符波 · 节拍强化" : "K 远程音符波";
             rhythmJudge.color = onBeat ? new Color(1f, 0.80f, 0.28f) : new Color(0.28f, 0.92f, 1f);
         }
@@ -6495,6 +7085,8 @@ namespace MeixiEcho
         {
             if (!chapterOneCombatActive || finishingStrike) return;
             chapterOneCombatPhase = Mathf.Clamp(phase, 1, 3);
+            if (chapterOneCombatPhase == 3)
+                MeixiLocalProgress.SetCheckpoint("ChapterOnePhaseTwoEnd");
             combatPhaseRestUntilDsp = Math.Max(AudioSettings.dspTime + CombatPhaseRestSeconds, restUntilDsp);
             if (chapterOneCombatPhase == 3 && chapterOnePhaseThreeMusic != null && musicSource != null)
             {
@@ -6573,8 +7165,7 @@ namespace MeixiEcho
                 $"第 三 阶 段 · {phaseName}\n" +
                 "<size=20>左手 Q / E 维持声部　·　右手 J / K / SPACE 回应</size>\n" +
                 "<size=16>ENTER / SPACE / E 或点击确认后继续</size>";
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
             Debug.Log("[MeixiPhaseGuide] Phase three guide opened; waiting for manual confirmation.");
         }
 
@@ -6597,8 +7188,7 @@ namespace MeixiEcho
             creekSpirit?.ResumeAfterPhaseGuide(safeResumeDsp);
             lastDualHandHudPhase = -1;
             player?.ResetInputTransientState();
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            MeixiCursorState.SetGameplay();
             Debug.Log($"[MeixiPhaseGuide] Phase three guide confirmed; combat resumes at {safeResumeDsp:F3}.");
         }
 
@@ -7416,13 +8006,17 @@ namespace MeixiEcho
         private void PresentEnding()
         {
             if (!IsAutomatedPresentationRun()) MeixiLocalProgress.MarkChapterOneCompleted();
+            terminalEndingOpen = false;
+            StopTerminalEndingMusic();
             complete = true;
             chapterOneCombatActive = false;
             rhythmPanel.SetActive(false);
             hudPanel.SetActive(false);
+            endingTitleText.gameObject.SetActive(true);
+            endingStoryText.gameObject.SetActive(true);
+            if (terminalEndingPageRoot != null) terminalEndingPageRoot.SetActive(false);
             endingPanel.SetActive(true);
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            MeixiCursorState.SetPointer();
         }
 
         public void PerformSoundPulse(Vector3 origin, Vector3 forward, bool high)

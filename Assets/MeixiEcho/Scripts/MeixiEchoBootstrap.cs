@@ -18,6 +18,11 @@ namespace MeixiEcho
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (scene.name == "MeixiChapterThree" ||
+                Object.FindAnyObjectByType<ChapterThreeHomestayRuntime>() != null)
+            {
+                return;
+            }
             if (!theatreCaptureRedirected && scene.name != "MeixiTheatre" &&
                 System.Array.Exists(System.Environment.GetCommandLineArgs(), value =>
                     string.Equals(value, "-meixiTheatreCapture", System.StringComparison.OrdinalIgnoreCase) ||

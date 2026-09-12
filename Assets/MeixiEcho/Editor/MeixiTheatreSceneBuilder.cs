@@ -55,7 +55,8 @@ namespace MeixiEcho.Editor
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene("Assets/Scenes/MeixiEditable.unity", true),
-                new EditorBuildSettingsScene(ScenePath, true)
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Scenes/MeixiChapterThree.unity", true)
             };
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
@@ -250,7 +251,12 @@ namespace MeixiEcho.Editor
             RenderSettings.fogColor = new Color(.12f,.10f,.085f); RenderSettings.fogDensity = .008f;
             var runtime = root.AddComponent<TheatreStageRuntime>();
             EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene, ScenePath);
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene("Assets/Scenes/MeixiEditable.unity",true), new EditorBuildSettingsScene(ScenePath,true) };
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene("Assets/Scenes/MeixiEditable.unity", true),
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Scenes/MeixiChapterThree.unity", true)
+            };
             AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
         }
 

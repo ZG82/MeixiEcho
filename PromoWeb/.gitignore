@@ -27,6 +27,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.codex-dev.*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -41,3 +42,12 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# Windows installers are packaged from the validated local build output, not source-controlled.
+/public/downloads/*.exe
+
+# Existing campaign media remains available in the validated deployment archive.
+# Track only the newly authored final-chapter poster with this site source revision.
+/public/media/*
+!/public/media/meixi-echo-chapter-three-final-poster.png
+/poster/assets/*

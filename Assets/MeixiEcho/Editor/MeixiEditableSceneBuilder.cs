@@ -147,7 +147,12 @@ namespace MeixiEcho.Editor
                 throw new IOException("无法保存可编辑场景：" + ScenePath);
             }
 
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Scenes/MeixiTheatre.unity", true),
+                new EditorBuildSettingsScene("Assets/Scenes/MeixiChapterThree.unity", true)
+            };
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             Selection.activeGameObject = world;

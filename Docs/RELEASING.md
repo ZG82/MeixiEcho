@@ -22,21 +22,21 @@ Build/Windows/MeixiEcho.exe
 使用 Inno Setup 编译：
 
 ```text
-Tools/Installer/MeixiEcho_v0.9.5.iss
+Tools/Installer/MeixiEcho_v1.1.1.iss
 ```
 
 本地 Inno Setup 工具链和输出安装包均被 Git 忽略。不要把 `.exe` 安装包提交进仓库。
 
 ## 4. 创建 GitHub Release
 
-1. 使用与版本一致的标签，例如 `v0.9.5`。
-2. Release 标题使用 `梅溪回响 v0.9.5`。
+1. 使用与版本一致的标签，例如 `v1.1.1`。
+2. Release 标题使用 `梅溪回响 v1.1.1`。
 3. 从 `CHANGELOG.md` 提取本版本玩家可见变化。
 4. 上传 Windows x64 安装包作为 Release 附件。
 5. 生成并附上 SHA-256 校验值：
 
 ```powershell
-Get-FileHash .\梅溪回响_Windows_x64_安装包_v0.9.5.exe -Algorithm SHA256
+Get-FileHash .\梅溪回响_Windows_x64_安装包_v1.1.1.exe -Algorithm SHA256
 ```
 
 ## 5. 更新宣发网站
@@ -44,7 +44,7 @@ Get-FileHash .\梅溪回响_Windows_x64_安装包_v0.9.5.exe -Algorithm SHA256
 生产构建前设置：
 
 ```text
-NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/<owner>/<repository>/releases/download/v0.9.5/MeixiEcho_v0.9.5_Windows_x64_Setup.exe
+NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/<owner>/<repository>/releases/download/v1.1.1/梅溪回响_Windows_x64_安装包_v1.1.1.exe
 ```
 
 随后在 `PromoWeb/` 执行 `npm ci` 与 `npm test`。仓库中不保存安装包副本。

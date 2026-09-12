@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>梅溪回响 - 游戏详情</title>
+  <style>
+    :root { color-scheme: light; --ink: #17212d; --muted: #627080; --line: #d9e1e5; --paper: #f6f7f4; --teal: #087f87; --red: #b63538; --gold: #bf861d; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #edf1f0; color: var(--ink); font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; line-height: 1.75; }
+    .page { max-width: 1040px; margin: 32px auto; overflow: hidden; background: #fff; box-shadow: 0 8px 30px rgb(25 43 49 / 10%); }
+    .hero { position: relative; min-height: 450px; padding: 60px 52px; color: #fff; background: #152f32 url("./public/media/hero-poster-key-art.png") center / cover no-repeat; isolation: isolate; }
+    .hero::before { position: absolute; inset: 0; z-index: -1; content: ""; background: linear-gradient(90deg, rgb(9 27 30 / 94%) 0%, rgb(10 35 38 / 78%) 45%, rgb(9 25 29 / 24%) 100%); }
+    .badge { display: inline-block; padding: 4px 11px; border: 1px solid rgb(255 255 255 / 55%); font-size: 13px; letter-spacing: 1px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin: 18px 0 2px; font-size: 58px; line-height: 1.05; letter-spacing: 4px; }
+    .en { margin: 0 0 22px; font-size: 13px; letter-spacing: 4px; opacity: .78; }
+    .hero .lead { max-width: 510px; margin-bottom: 28px; font-size: 19px; line-height: 1.8; }
+    .meta { display: flex; flex-wrap: wrap; gap: 0; max-width: 570px; }
+    .meta div { min-width: 136px; padding: 9px 18px 9px 0; margin-right: 18px; border-right: 1px solid rgb(255 255 255 / 38%); }
+    .meta div:last-child { border: 0; }
+    .meta small, .meta strong { display: block; }
+    .meta small { font-size: 12px; opacity: .72; }
+    .meta strong { font-size: 15px; }
+    .content { padding: 48px 52px 24px; }
+    .section { margin-bottom: 50px; }
+    .section-kicker { margin-bottom: 8px; color: var(--teal); font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+    h2 { margin-bottom: 18px; font-size: 28px; line-height: 1.35; letter-spacing: 0; }
+    h3 { margin-bottom: 8px; font-size: 19px; }
+    .intro { max-width: 810px; font-size: 17px; color: #374451; }
+    .quote { padding: 18px 22px; border-left: 4px solid var(--gold); background: #fff9ed; color: #5e4821; font-size: 18px; }
+    .wide-image { display: block; width: 100%; margin: 22px 0; background: #dfe6e4; object-fit: cover; }
+    .image-caption { margin: -11px 0 24px; color: var(--muted); font-size: 12px; text-align: right; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .feature { padding: 22px; border-top: 3px solid var(--teal); background: var(--paper); }
+    .feature:nth-child(2) { border-color: var(--red); }
+    .feature:nth-child(3) { border-color: var(--gold); }
+    .feature:nth-child(4) { border-color: #455b6b; }
+    .feature p { margin-bottom: 0; color: #52606c; font-size: 14px; }
+    .chapter { display: grid; grid-template-columns: 66px 1fr; gap: 18px; padding: 24px 0; border-top: 1px solid var(--line); }
+    .chapter:last-child { border-bottom: 1px solid var(--line); }
+    .chapter-index { color: var(--teal); font-size: 40px; font-family: Georgia, serif; line-height: 1; }
+    .chapter small { color: var(--teal); font-weight: 700; letter-spacing: 1px; }
+    ul { padding-left: 20px; margin: 8px 0 0; }
+    li { margin: 3px 0; }
+    .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .gallery figure { margin: 0; overflow: hidden; background: #e4e8e6; }
+    .gallery img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; transition: transform .25s ease; }
+    .gallery figure:hover img { transform: scale(1.04); }
+    .gallery figcaption { padding: 9px 10px 11px; font-size: 13px; font-weight: 700; }
+    .callout { padding: 28px 30px; border: 1px solid #d5e2de; background: #f1f7f5; }
+    .callout h2 { margin-bottom: 10px; }
+    .system { display: grid; grid-template-columns: 150px 1fr; gap: 0; margin: 0; border-top: 1px solid var(--line); }
+    .system dt, .system dd { padding: 12px 0; margin: 0; border-bottom: 1px solid var(--line); }
+    .system dt { color: var(--muted); font-weight: 700; }
+    footer { padding: 22px 52px; background: #15272a; color: #b8c5c5; font-size: 13px; }
+    footer strong { color: #fff; letter-spacing: 2px; }
+    @media (max-width: 640px) { .page { margin: 0; } .hero, .content { padding: 38px 24px; } .hero { min-height: 500px; } h1 { font-size: 44px; } .hero .lead { font-size: 16px; } .meta div { min-width: 120px; } .grid, .gallery { grid-template-columns: 1fr; } .gallery { grid-template-columns: repeat(2, 1fr); } .system { grid-template-columns: 96px 1fr; } footer { padding: 20px 24px; } }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header class="hero">
+      <span class="badge">第三人称剧情动作音游</span>
+      <h1>梅溪回响</h1>
+      <p class="en">MEIXI ECHO</p>
+      <p class="lead">一个来自城市的大学生，走进一座逐渐失去声音的村庄。用节拍战斗，用聆听找回人与土地之间的连接。</p>
+      <div class="meta">
+        <div><small>当前版本</small><strong>v0.9.5</strong></div>
+        <div><small>游戏平台</small><strong>Windows x64</strong></div>
+        <div><small>游戏模式</small><strong>单人 · 离线</strong></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="section">
+        <p class="section-kicker">ABOUT THE GAME</p>
+        <h2>当村庄逐渐沉默，谁还记得自己的声音？</h2>
+        <p class="intro">《梅溪回响》是一款以乡村声音记忆为主题的第三人称剧情动作音游。玩家将跟随电子信息专业学生林默来到闽清梅溪村，在溪流、古桥与旧厝之间探索，通过对话、魂音采集、节拍战斗和机关解谜，让正在消失的乡音重新响起。</p>
+        <p class="quote">“声音怎么可能有记忆？”从采集第一枚破碎音符开始，林默将面对失调的溪灵，也将重新理解技术、音乐与故乡的关系。</p>
+        <img class="wide-image" src="./public/media/village-wide.png" alt="梅溪村实机场景" onerror="this.style.display='none'">
+        <p class="image-caption">实机画面：沿溪流与古桥探索梅溪村</p>
+      </section>
+
+      <section class="section">
+        <p class="section-kicker">KEY FEATURES</p>
+        <h2>聆听、回应，然后合奏</h2>
+        <div class="grid">
+          <article class="feature"><h3>聆听村庄</h3><p>沿溪流、民居与古桥收集声音。水滴、竹叶、脚步与乡音，都将成为可演奏的记忆。</p></article>
+          <article class="feature"><h3>节拍战斗</h3><p>敌人的攻击写在节拍里。近战突进、远程音符与瞬身闪避，需要在魂音收束的瞬间回应。</p></article>
+          <article class="feature"><h3>双手声部</h3><p>在高强度战斗中同时操控持续声部与主旋律，在混乱的节拍里完成真正的合奏。</p></article>
+          <article class="feature"><h3>乡村叙事</h3><p>从泛黄日记到村民对话，逐步拼回一座村庄的声音记忆，以及林默与故乡之间被忽略的联系。</p></article>
+        </div>
+        <img class="wide-image" src="./public/media/combat-dual.png" alt="节拍战斗实机画面" onerror="this.style.display='none'">
+        <p class="image-caption">实机画面：看清锁定，踩准节拍，回应攻击</p>
+      </section>
+
+      <section class="section">
+        <p class="section-kicker">TWO COMPLETE CHAPTERS</p>
+        <h2>从溪声走到戏台深处</h2>
+        <article class="chapter">
+          <span class="chapter-index">I</span>
+          <div><small>CHAPTER I · COMPLETE</small><h3>没有声音的村庄</h3><p>调查梅溪村、记录村民的声纹，收集溪流魂音，并完成三阶段节拍战斗。</p><ul><li>村庄探索与 NPC 叙事</li><li>魂音采集与三阶段溪灵战</li></ul></div>
+        </article>
+        <article class="chapter">
+          <span class="chapter-index">II</span>
+          <div><small>CHAPTER II · COMPLETE</small><h3>古厝里的旧曲</h3><p>唤醒传统乐器，解开古戏台机关，深入镜像迷宫，并将最后的回响带回梅溪村。</p><ul><li>乐器互动、物件检视与机关解谜</li><li>木偶追逐、镜像迷宫与终末之书</li></ul></div>
+        </article>
+      </section>
+
+      <section class="section">
+        <p class="section-kicker">GAME MOMENTS</p>
+        <h2>梅溪的电影记忆</h2>
+        <div class="gallery">
+          <figure><img src="./public/media/poster-village-exploration.png" alt="溪流里的节拍" onerror="this.style.display='none'"><figcaption>溪流里的节拍</figcaption></figure>
+          <figure><img src="./public/media/poster-phase-three.png" alt="双手声部" onerror="this.style.display='none'"><figcaption>双手声部</figcaption></figure>
+          <figure><img src="./public/media/poster-chapter-two-old-song.png" alt="古厝里的旧曲" onerror="this.style.display='none'"><figcaption>古厝里的旧曲</figcaption></figure>
+        </div>
+      </section>
+
+      <section class="section callout">
+        <p class="section-kicker">CURRENT BUILD · v0.9.5</p>
+        <h2>两章完整，余音归村</h2>
+        <p>第一章与第二章主线现已完整贯通。当前版本包含村庄探索、节拍战斗、古戏台机关、乐器互动、镜像迷宫、木偶追逐与终章回流等内容。</p>
+        <ul><li>单人离线体验，无需账号</li><li>支持本地存档、章节选择、成就与设置</li><li>Windows 10 / 11 64 位可运行</li></ul>
+      </section>
+
+      <section class="section">
+        <p class="section-kicker">SYSTEM REQUIREMENTS</p>
+        <h2>运行建议</h2>
+        <dl class="system"><dt>操作系统</dt><dd>Windows 10 / 11 64 位</dd><dt>内存</dt><dd>建议 8 GB 或以上</dd><dt>显卡</dt><dd>支持 DirectX 11 / 12</dd><dt>存储空间</dt><dd>预留约 1 GB</dd></dl>
+      </section>
+    </main>
+    <footer><strong>梅溪回响 · MEIXI ECHO</strong><br>一个关于声音、故乡与记忆的第三人称音乐冒险。</footer>
+  </article>
+</body>
+</html>

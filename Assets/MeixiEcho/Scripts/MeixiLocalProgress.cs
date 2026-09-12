@@ -9,7 +9,7 @@ namespace MeixiEcho
     [Serializable]
     public sealed class MeixiOfflineSaveData
     {
-        public int schemaVersion = 4;
+        public int schemaVersion = 6;
         public bool hasEnteredGame;
         public int currentChapter = 1;
         public int journeyCount;
@@ -19,8 +19,24 @@ namespace MeixiEcho
         public bool firstConversationRecorded;
         public bool chapterOneCompleted;
         public bool chapterTwoCompleted;
+        public bool chapterThreeCompleted;
+        public bool chapterThreeSoulEarned;
         public bool terminalBookPending;
         public bool finalBookCollected;
+        public int chapterThreeDay = 1;
+        public float chapterThreeMinutes = 480f;
+        public float chapterThreeSanity = 100f;
+        public float chapterThreeScoreTotal;
+        public float chapterThreeAverageScore;
+        public int chapterThreeTaskMask;
+        public int chapterThreeTruthMask;
+        public int chapterThreeHousingMask;
+        public int chapterThreeHousingScheduleSeed;
+        public bool chapterThreeVoteResolved;
+        public bool chapterThreeStayed;
+        public bool chapterThreeFundingFound;
+        public bool chapterThreeEndingReady;
+        public string chapterThreeEnding = string.Empty;
         public string checkpoint = "None";
         public string savedAtUtc = string.Empty;
         public List<string> unlockedAchievements = new();
@@ -76,7 +92,7 @@ namespace MeixiEcho
     /// </summary>
     public static class MeixiLocalProgress
     {
-        private const int CurrentSchema = 4;
+        private const int CurrentSchema = 6;
         private const int MaxSafeCounter = 1000000;
         private const string ProgressFileName = "meixi_progress_v1.json";
         private const string SettingsFileName = "meixi_settings_v1.json";
@@ -98,7 +114,18 @@ namespace MeixiEcho
             new("first_arrival", "初来乍到", "第一次进入《梅溪回响》", MeixiAchievementRank.C),
             new("chatterbox", "话痨", "单次旅途中与 NPC 对话达到 30 次", MeixiAchievementRank.B),
             new("death_30", "永不言弃", "累计死亡达到 30 次", MeixiAchievementRank.S),
-            new("aunt_shi_first", "石婶结局", "首次安装后的首个对话对象是石婶", MeixiAchievementRank.S)
+            new("aunt_shi_first", "石婶结局", "首次安装后的首个对话对象是石婶", MeixiAchievementRank.S),
+            new("chapter_three_soul", "第三枚音魂", "在七日实践中取得合格成果", MeixiAchievementRank.A),
+            new("chapter_three_model", "实践标兵", "以九十分以上的平均分完成第三章", MeixiAchievementRank.S),
+            new("chapter_three_truth", "真相", "汇齐三章证据，拼回林氏祠堂火灾的全貌", MeixiAchievementRank.SSS),
+            new("missing_person", "失踪的人", "核对全部住房信息，发现名单中缺失的挂名成员", MeixiAchievementRank.S),
+            new("choice", "抉择", "留下交流并发现实践保障只覆盖七天", MeixiAchievementRank.A),
+            new("reason", "理智", "主动承担额外两天的食宿费用", MeixiAchievementRank.A),
+            new("silence", "沉默", "在关键选择中保持沉默", MeixiAchievementRank.B),
+            new("false_truth", "虚假的真相", "在证据仍不完整时举报人员造假", MeixiAchievementRank.S),
+            new("true_ending", "真正的大结局", "以完整证据揭开功利与纵火背后的真相", MeixiAchievementRank.SSS),
+            new("cover_up", "包庇", "知晓完整真相后仍选择不举报", MeixiAchievementRank.B),
+            new("kize_gift", "锦泽的馈赠", "在民宿庭院取用茶水", MeixiAchievementRank.A)
         };
 
         public static IReadOnlyList<MeixiAchievementDefinition> AchievementDefinitions => Definitions;
@@ -138,7 +165,7 @@ namespace MeixiEcho
         private static string SettingsFilePath => Path.Combine(SaveDirectoryPath, SettingsFileName);
         public static bool HasGameplayProgress { get { Initialize(); return progress.currentChapter >= 1; } }
         public static bool HasContinueSave => HasGameplayProgress;
-        public static int CurrentChapter { get { Initialize(); return Mathf.Clamp(progress.currentChapter, 1, 2); } }
+        public static int CurrentChapter { get { Initialize(); return Mathf.Clamp(progress.currentChapter, 1, 3); } }
         public static bool IsCheckpoint(string value)
         {
             Initialize();
@@ -146,6 +173,37 @@ namespace MeixiEcho
         }
         public static bool TerminalBookPending { get { Initialize(); return progress.terminalBookPending; } }
         public static bool FinalBookCollected { get { Initialize(); return progress.finalBookCollected; } }
+        public static bool ChapterThreeCompleted { get { Initialize(); return progress.chapterThreeCompleted; } }
+        public static bool ChapterThreeSoulEarned { get { Initialize(); return progress.chapterThreeSoulEarned; } }
+        public static int ChapterThreeDay { get { Initialize(); return Mathf.Clamp(progress.chapterThreeDay, 1, 9); } }
+        public static float ChapterThreeMinutes { get { Initialize(); return Mathf.Repeat(progress.chapterThreeMinutes, 1440f); } }
+        public static float ChapterThreeSanity { get { Initialize(); return Mathf.Clamp(progress.chapterThreeSanity, 0f, 100f); } }
+        public static float ChapterThreeScoreTotal { get { Initialize(); return Mathf.Max(0f, progress.chapterThreeScoreTotal); } }
+        public static float ChapterThreeAverageScore { get { Initialize(); return Mathf.Clamp(progress.chapterThreeAverageScore, 0f, 100f); } }
+        public static int ChapterThreeTaskMask { get { Initialize(); return progress.chapterThreeTaskMask; } }
+        public static int ChapterThreeTruthMask { get { Initialize(); return progress.chapterThreeTruthMask; } }
+        public static int ChapterThreeHousingMask { get { Initialize(); return progress.chapterThreeHousingMask; } }
+        public static int ChapterThreeHousingScheduleSeed
+        {
+            get
+            {
+                Initialize();
+                lock (Gate)
+                {
+                    if (progress.chapterThreeHousingScheduleSeed == 0)
+                    {
+                        progress.chapterThreeHousingScheduleSeed = CreateChapterThreeScheduleSeedLocked();
+                        SaveProgressLocked();
+                    }
+                    return progress.chapterThreeHousingScheduleSeed;
+                }
+            }
+        }
+        public static bool ChapterThreeVoteResolved { get { Initialize(); return progress.chapterThreeVoteResolved; } }
+        public static bool ChapterThreeStayed { get { Initialize(); return progress.chapterThreeStayed; } }
+        public static bool ChapterThreeFundingFound { get { Initialize(); return progress.chapterThreeFundingFound; } }
+        public static bool ChapterThreeEndingReady { get { Initialize(); return progress.chapterThreeEndingReady; } }
+        public static string ChapterThreeEnding { get { Initialize(); return progress.chapterThreeEnding ?? string.Empty; } }
         public static int JourneyCount { get { Initialize(); return progress.journeyCount; } }
         public static int PracticeNumber { get { Initialize(); return Math.Max(1, progress.totalDeaths + 1); } }
         public static int TotalDeaths { get { Initialize(); return progress.totalDeaths; } }
@@ -239,6 +297,7 @@ namespace MeixiEcho
                 progress.currentChapter = 1;
                 progress.chapterOneCompleted = false;
                 progress.chapterTwoCompleted = false;
+                ResetChapterThreeLocked();
                 progress.terminalBookPending = false;
                 progress.finalBookCollected = false;
                 progress.checkpoint = "ChapterOne";
@@ -258,8 +317,17 @@ namespace MeixiEcho
             Initialize();
             lock (Gate)
             {
-                progress.currentChapter = Mathf.Clamp(chapter, 1, 2);
-                if (progress.currentChapter >= 2)
+                progress.currentChapter = Mathf.Clamp(chapter, 1, 3);
+                if (progress.currentChapter >= 3)
+                {
+                    progress.chapterOneCompleted = true;
+                    progress.chapterTwoCompleted = true;
+                    ResetChapterThreeLocked();
+                    progress.terminalBookPending = false;
+                    progress.finalBookCollected = false;
+                    progress.checkpoint = "ChapterThree";
+                }
+                else if (progress.currentChapter >= 2)
                 {
                     progress.chapterOneCompleted = true;
                     progress.terminalBookPending = false;
@@ -269,6 +337,7 @@ namespace MeixiEcho
                 {
                     progress.chapterOneCompleted = false;
                     progress.chapterTwoCompleted = false;
+                    ResetChapterThreeLocked();
                     progress.terminalBookPending = false;
                     progress.finalBookCollected = false;
                     progress.checkpoint = "ChapterOne";
@@ -319,12 +388,56 @@ namespace MeixiEcho
             Initialize();
             lock (Gate)
             {
-                progress.currentChapter = 1;
+                progress.currentChapter = 3;
                 progress.chapterOneCompleted = true;
                 progress.chapterTwoCompleted = true;
+                ResetChapterThreeLocked();
+                progress.terminalBookPending = false;
+                progress.finalBookCollected = false;
+                progress.checkpoint = "ChapterThree";
+                SaveProgressLocked();
+            }
+        }
+
+        public static void SaveChapterThreeCheckpoint(int day, float minutes, float sanity, float scoreTotal,
+            int taskMask, int truthMask, int housingMask, bool voteResolved, bool stayed, bool fundingFound)
+        {
+            Initialize();
+            lock (Gate)
+            {
+                progress.currentChapter = 3;
+                progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                progress.chapterThreeDay = Mathf.Clamp(day, 1, 9);
+                progress.chapterThreeMinutes = Mathf.Repeat(minutes, 1440f);
+                progress.chapterThreeSanity = Mathf.Clamp(sanity, 0f, 100f);
+                progress.chapterThreeScoreTotal = Mathf.Max(0f, scoreTotal);
+                progress.chapterThreeTaskMask = taskMask;
+                progress.chapterThreeTruthMask = truthMask;
+                progress.chapterThreeHousingMask = housingMask;
+                progress.chapterThreeVoteResolved = voteResolved;
+                progress.chapterThreeStayed = stayed;
+                progress.chapterThreeFundingFound = fundingFound;
+                progress.checkpoint = "ChapterThree";
+                SaveProgressLocked();
+            }
+        }
+
+        public static void MarkChapterThreeEndingReady(float averageScore, bool soulEarned, string ending)
+        {
+            Initialize();
+            lock (Gate)
+            {
+                progress.currentChapter = 3;
+                progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                progress.chapterThreeSoulEarned = soulEarned;
+                progress.chapterThreeAverageScore = Mathf.Clamp(averageScore, 0f, 100f);
+                progress.chapterThreeEndingReady = true;
+                progress.chapterThreeEnding = ending ?? string.Empty;
                 progress.terminalBookPending = true;
                 progress.finalBookCollected = false;
-                progress.checkpoint = "TerminalBook";
+                progress.checkpoint = "ChapterThreeFinalBook";
                 SaveProgressLocked();
             }
         }
@@ -371,9 +484,11 @@ namespace MeixiEcho
             Initialize();
             lock (Gate)
             {
-                progress.currentChapter = 2;
+                progress.currentChapter = 3;
                 progress.chapterOneCompleted = true;
                 progress.chapterTwoCompleted = true;
+                progress.chapterThreeCompleted = true;
+                progress.chapterThreeEndingReady = false;
                 progress.terminalBookPending = false;
                 progress.finalBookCollected = true;
                 progress.checkpoint = "FinalBookCollected";
@@ -412,7 +527,13 @@ namespace MeixiEcho
         public static string GetContinueSummary()
         {
             Initialize();
-            if (progress.terminalBookPending) return "终章 · 终末之书已在梅溪村显现";
+            if (progress.currentChapter >= 3)
+            {
+                if (progress.terminalBookPending) return "第三章终章 · 终末之书等待拾取";
+                return progress.chapterThreeCompleted
+                    ? "第三章 · 梅溪回响已经归档"
+                    : "第三章 · 民宿里的七日实践";
+            }
             if (progress.currentChapter <= 1) return "第一章 · 溪流里的节拍";
             return progress.finalBookCollected
                 ? "终末之书已取得  ·  可重返古戏台"
@@ -526,6 +647,7 @@ namespace MeixiEcho
             int sourceSchema = progress.schemaVersion;
             bool legacyChapterTwo = progress.chapterOneCompleted || progress.finalBookCollected ||
                                     string.Equals(progress.checkpoint, "ChapterTwo", StringComparison.Ordinal);
+            bool legacyChapterTwoEnding = progress.chapterTwoCompleted || progress.terminalBookPending || progress.finalBookCollected;
             if (sourceSchema < 4)
             {
                 progress.chapterTwoCompleted = progress.finalBookCollected;
@@ -533,14 +655,40 @@ namespace MeixiEcho
             }
             if (sourceSchema < 3 || progress.currentChapter < 1)
                 progress.currentChapter = legacyChapterTwo ? 2 : 1;
-            progress.currentChapter = Mathf.Clamp(progress.currentChapter, 1, 2);
-            if (progress.terminalBookPending)
+            if (sourceSchema < 5 && legacyChapterTwoEnding)
             {
-                progress.currentChapter = 1;
+                progress.currentChapter = 3;
                 progress.chapterOneCompleted = true;
                 progress.chapterTwoCompleted = true;
+                ResetChapterThreeLocked();
+                progress.terminalBookPending = false;
                 progress.finalBookCollected = false;
-                progress.checkpoint = "TerminalBook";
+                progress.checkpoint = "ChapterThree";
+            }
+            progress.currentChapter = Mathf.Clamp(progress.currentChapter, 1, 3);
+            if (progress.currentChapter >= 3)
+            {
+                progress.chapterOneCompleted = true;
+                progress.chapterTwoCompleted = true;
+                if (progress.chapterThreeCompleted)
+                {
+                    progress.chapterThreeEndingReady = false;
+                    progress.terminalBookPending = false;
+                    progress.finalBookCollected = true;
+                    progress.checkpoint = "FinalBookCollected";
+                }
+                else if (progress.chapterThreeEndingReady)
+                {
+                    progress.terminalBookPending = true;
+                    progress.finalBookCollected = false;
+                    progress.checkpoint = "ChapterThreeFinalBook";
+                }
+                else
+                {
+                    progress.terminalBookPending = false;
+                    progress.finalBookCollected = false;
+                    progress.checkpoint = "ChapterThree";
+                }
             }
             else if (progress.currentChapter >= 2)
             {
@@ -559,6 +707,12 @@ namespace MeixiEcho
             progress.currentJourneyDeaths = Math.Min(progress.currentJourneyDeaths, progress.totalDeaths);
             progress.journeyCount = Math.Min(MaxSafeCounter + 1, Math.Max(1, progress.totalDeaths + 1));
             progress.currentJourneyNpcDialogues = Math.Min(MaxSafeCounter, Math.Max(0, progress.currentJourneyNpcDialogues));
+            progress.chapterThreeDay = Mathf.Clamp(progress.chapterThreeDay, 1, 9);
+            progress.chapterThreeMinutes = Mathf.Repeat(progress.chapterThreeMinutes, 1440f);
+            progress.chapterThreeSanity = Mathf.Clamp(progress.chapterThreeSanity, 0f, 100f);
+            progress.chapterThreeScoreTotal = Mathf.Max(0f, progress.chapterThreeScoreTotal);
+            progress.chapterThreeAverageScore = Mathf.Clamp(progress.chapterThreeAverageScore, 0f, 100f);
+            progress.chapterThreeEnding ??= string.Empty;
             progress.checkpoint ??= "ChapterOne";
             progress.unlockedAchievements ??= new List<string>();
             progress.achievementRecords ??= new List<MeixiAchievementUnlockRecord>();
@@ -578,6 +732,33 @@ namespace MeixiEcho
                 });
             }
             settings ??= new MeixiOfflineSettingsData();
+        }
+
+        private static void ResetChapterThreeLocked()
+        {
+            progress.chapterThreeCompleted = false;
+            progress.chapterThreeSoulEarned = false;
+            progress.chapterThreeDay = 1;
+            progress.chapterThreeMinutes = 480f;
+            progress.chapterThreeSanity = 100f;
+            progress.chapterThreeScoreTotal = 0f;
+            progress.chapterThreeAverageScore = 0f;
+            progress.chapterThreeTaskMask = 0;
+            progress.chapterThreeTruthMask = 0;
+            progress.chapterThreeHousingMask = 0;
+            progress.chapterThreeHousingScheduleSeed = CreateChapterThreeScheduleSeedLocked();
+            progress.chapterThreeVoteResolved = false;
+            progress.chapterThreeStayed = false;
+            progress.chapterThreeFundingFound = false;
+            progress.chapterThreeEndingReady = false;
+            progress.chapterThreeEnding = string.Empty;
+        }
+
+        private static int CreateChapterThreeScheduleSeedLocked()
+        {
+            long ticks = DateTime.UtcNow.Ticks;
+            int seed = unchecked((int)(ticks ^ (ticks >> 32) ^ (progress.journeyCount * 486187739L)));
+            return seed == 0 ? 20300917 : seed;
         }
 
         private static void SaveProgressLocked()

@@ -1,0 +1,21 @@
+{
+  "name": "MeixiEcho.ChapterThreeCore.Tests",
+  "rootNamespace": "MeixiEcho.Editor.Tests",
+  "references": [
+    "MeixiEcho.ChapterThreeCore"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

@@ -1,8 +1,11 @@
 import GameplayJumpButton from "./GameplayJumpButton";
+import ParticleHero from "./ParticleHero";
+import ParticleReveal from "./ParticleReveal";
 
-const localDownloadHref = "/downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe";
-const downloadHref = process.env.NEXT_PUBLIC_DOWNLOAD_URL?.trim() || localDownloadHref;
-const downloadAttribute = downloadHref.startsWith("http") ? undefined : true;
+const INSTALLER_FILE = "MeixiEcho_v1.1.1_Windows_x64_Setup.exe";
+const INSTALLER_URL =
+  process.env.NEXT_PUBLIC_DOWNLOAD_URL ?? `/downloads/${INSTALLER_FILE}`;
+const IS_LOCAL_INSTALLER = !/^https?:\/\//i.test(INSTALLER_URL);
 
 const features = [
   {
@@ -25,8 +28,8 @@ const features = [
   },
   {
     index: "04",
-    title: "乡村叙事",
-    copy: "从泛黄日记到村民对话，跟随林默重新理解技术、音乐，以及人与土地之间被遗忘的连接。",
+    title: "终章实践",
+    copy: "入住梅溪民宿后，在收纳、清洁、录入与一笔画任务里梳理档案；每一次完成，都会推进最后的选择。",
     tone: "paper",
   },
 ];
@@ -49,15 +52,20 @@ export default function Home() {
           <a href="#gallery">海报</a>
           <a href="#release">版本</a>
         </nav>
-        <a className="nav-download" href={downloadHref} download={downloadAttribute}>
-          下载 Windows 版
+        <a
+          className="nav-download"
+          href={INSTALLER_URL}
+          download={IS_LOCAL_INSTALLER ? INSTALLER_FILE : undefined}
+        >
+          获取 Windows 版
         </a>
       </header>
 
       <section className="hero" id="top">
+        <ParticleHero />
         <div className="hero-copy">
           <div className="eyebrow">
-            <span>第三人称剧情动作音游</span>
+            <span>剧情音乐冒险 · 三章完整</span>
             <i />
             <span>Windows</span>
           </div>
@@ -67,13 +75,17 @@ export default function Home() {
           </h1>
           <p className="latin-title">MEIXI ECHO</p>
           <p className="hero-lead">
-            一个来自城市的大学生，走进一座逐渐失去声音的村庄。
+            一个来自城市的大学生，走进一座逐渐失去声音的村庄，
             <br />
-            用节拍战斗，用聆听找回人与土地之间的连接。
+            在战斗、旧曲与民宿档案中，用聆听找回人与土地之间的连接。
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href={downloadHref} download={downloadAttribute}>
-              <span>下载 Windows 版</span>
+            <a
+              className="primary-button"
+              href={INSTALLER_URL}
+              download={IS_LOCAL_INSTALLER ? INSTALLER_FILE : undefined}
+            >
+              <span>获取 Windows 版</span>
               <b>↓</b>
             </a>
             <GameplayJumpButton />
@@ -81,7 +93,7 @@ export default function Home() {
           <div className="hero-meta" aria-label="版本信息">
             <div>
               <small>当前版本</small>
-              <strong>v0.9.5</strong>
+              <strong>v1.1.1</strong>
             </div>
             <div>
               <small>平台</small>
@@ -103,16 +115,18 @@ export default function Home() {
             <div className="poster-red-wash" />
             <div className="halftone" />
             <div className="speed-lines" />
-            <div className="poster-version">VER. 0.9.5</div>
+            <div className="poster-version">VER. 1.1.1</div>
             <div className="poster-caption">
               <span>LISTEN</span>
               <b>让失去的声音<br />重新响起</b>
             </div>
             <div className="poster-seal">魂<br />音</div>
           </div>
-          <p className="poster-note">ORIGINAL KEY ART · v0.9.5</p>
+          <p className="poster-note">ORIGINAL KEY ART · v1.1.1</p>
         </div>
       </section>
+
+      <ParticleReveal />
 
       <section className="story section" id="story">
         <div className="section-heading">
@@ -176,17 +190,18 @@ export default function Home() {
             </div>
           </div>
         </div>
+
       </section>
 
       <section className="chapters section" id="chapters">
         <div className="section-heading compact">
           <span className="section-number">03</span>
           <div>
-            <p className="kicker">TWO COMPLETE CHAPTERS</p>
-            <h2>两段旅途已经完整，<br />从溪声走到戏台深处。</h2>
+            <p className="kicker">THREE CHAPTERS COMPLETE · THE ECHO RETURNS</p>
+            <h2>三段旅途已经完整，<br />回响终于有了归处。</h2>
           </div>
         </div>
-        <div className="chapter-route" aria-label="第一章与第二章内容状态">
+        <div className="chapter-route" aria-label="梅溪回响三章完整内容">
           <article className="chapter-route-item chapter-one">
             <span className="chapter-index">I</span>
             <div>
@@ -210,6 +225,20 @@ export default function Home() {
                 <li>乐器互动、物件检视与机关解谜</li>
                 <li>木偶追逐、镜像迷宫与终末之书</li>
               </ul>
+            </div>
+          </article>
+          <div className="chapter-bridge" aria-hidden="true"><i /><span>终章入口</span><i /></div>
+          <article className="chapter-route-item chapter-three">
+            <span className="chapter-index">III</span>
+            <div>
+              <small>FINAL CHAPTER · COMPLETE</small>
+              <h3>七日回声</h3>
+              <p>入住 2030 年的梅溪实践民宿，在白天实践、夜间理智与散落档案之间，亲手完成最终的真相与选择。</p>
+              <ul>
+                <li>第一人称民宿探索与九日实践循环</li>
+                <li>四类实践任务、住房线索与终末之书</li>
+              </ul>
+              <span className="chapter-status">现已完成 · 多重选择等待书写</span>
             </div>
           </article>
         </div>
@@ -269,43 +298,64 @@ export default function Home() {
             </figcaption>
           </figure>
         </div>
+        <div className="chapter-three-art-grid">
+          <figure className="chapter-three-art chapter-three-homestay">
+            <span className="development-badge">FINAL CHAPTER · PLAYABLE NOW</span>
+            <figcaption>
+              <small>CHAPTER III · HOMESTAY</small>
+              <strong>灯亮之后，实践才真正开始</strong>
+              <span>白天完成收纳、清洁、录入与一笔画任务；十三分钟的日程里，每一份完成记录都会留下痕迹。</span>
+            </figcaption>
+          </figure>
+          <figure className="chapter-three-art chapter-three-archive">
+            <span className="development-badge">EIGHT CLUES · THREE ENDINGS</span>
+            <figcaption>
+              <small>FINAL CHAPTER · ARCHIVE</small>
+              <strong>奖状之外，还有另一份档案</strong>
+              <span>客房记录、住房信息与真相线索汇入终末之书。拾起它、翻完它，才会抵达属于你的结局。</span>
+            </figcaption>
+          </figure>
+        </div>
         <div className="campaign-poster-feature">
-          <figure className="campaign-poster-image" aria-label="梅溪回响主宣发海报" />
+          <figure className="campaign-poster-image" aria-label="梅溪回响第三章终章海报">
+            <span>CHAPTER III · FINAL</span>
+            <figcaption>雨落梅溪，终页未合</figcaption>
+          </figure>
           <div className="campaign-poster-copy">
-            <p className="kicker">OFFICIAL CAMPAIGN ART · v0.9.5</p>
-            <h3>两章完整，余音归村</h3>
-            <p>从雨后梅溪村到封闭古戏台，探索、节拍战斗、乐器互动与终末回流汇成一段完整旅程。</p>
+            <p className="kicker">OFFICIAL FINAL-CHAPTER POSTER · v1.1.1</p>
+            <h3>雨落梅溪，回响落在终页之前</h3>
+            <p>从雨后梅溪村到封闭古戏台，再到民宿里被掩住的档案，三章故事现已完整闭环。终章不再只是预告：你将完成九日实践、收集八条真相，并在终末之书前做出选择。</p>
             <dl>
               <div><dt>第一章</dt><dd>村庄调查 · 魂音采集 · 三阶段溪灵战</dd></div>
               <div><dt>第二章</dt><dd>古戏台机关 · 镜像迷宫 · 木偶追逐</dd></div>
-              <div><dt>终章</dt><dd>返回梅溪村 · 拾取终末之书</dd></div>
+              <div><dt>第三章</dt><dd>梅溪民宿 · 四类实践 · 八条真相 · 终末之书</dd></div>
             </dl>
           </div>
         </div>
-        <p className="gallery-footnote">海报取材于游戏场景，并以电影式构图重绘梅溪村、古戏台与声纹意象。</p>
+        <p className="gallery-footnote">第一、二章海报取材于游戏场景；第三章终章海报以梅溪民宿、雨夜档案与终末之书的实际主题完成视觉提炼。</p>
       </section>
 
       <section className="release section" id="release">
         <div className="release-card">
           <div className="release-stamp">
             <small>CURRENT<br />BUILD</small>
-            <strong>0.9.5</strong>
+            <strong>1.1.1</strong>
           </div>
           <div className="release-copy">
-            <p className="kicker">LATEST RELEASE · 2026.08</p>
-            <h2>第一章、第二章完整版现已完成</h2>
+            <p className="kicker">LATEST RELEASE · 2026.09</p>
+            <h2>三章完整，终章已抵达</h2>
             <p>
-              从梅溪村调查到古厝戏台迷宫，两章主线现已完整贯通。
-              v0.9.5 继续完善终章回流、战斗节奏、场景表现与交互体验。
+              从梅溪村调查到古厝戏台迷宫，再到梅溪民宿的九日实践，三章主线现已完整贯通。
+              第三章“七日回声”把民宿探索、四类实践任务、夜间理智与档案线索收束为可完成的最终篇章。
             </p>
-            <aside className="update-notice" aria-label="v0.9.5 更新通知">
-              <strong>v0.9.5 更新通知</strong>
+            <aside className="update-notice" aria-label="v1.1.1 更新通知">
+              <strong>v1.1.1 更新通知</strong>
               <ul>
-                <li>第一章、第二章完整内容已完成，主线可连续体验至终章</li>
-                <li>第二章加入乐器互动、机关解谜、物件检视、镜像迷宫与木偶追逐</li>
-                <li>第二章结束返回梅溪村后，终末之书会在地图中央显现</li>
-                <li>第一章第三阶段再次降低难度，双手声部判定放宽至基础窗口的 2.10 倍</li>
-                <li>缩短第三阶段持续声部长按时长，并继续美化人物、村庄与戏台表现</li>
+                <li>第三章“七日回声”正式完成：民宿探索、日夜循环、八条真相线索与多重结局现已开放</li>
+                <li>加入收纳、清洁、录入实践材料与鼠标一笔画四类任务，并随日期递进变化</li>
+                <li>终末之书以可翻页阅读的方式承接结局：先观看终章动画，再亲手读完最后档案</li>
+                <li>全章统一暂停、互动提示与鼠标控制逻辑，并优化玻璃门、衣柜、空调、电视与客房交互</li>
+                <li>第一章与第二章持续保留节拍战斗、古戏台机关、镜像迷宫与木偶追逐体验</li>
               </ul>
             </aside>
             <ul>
@@ -315,14 +365,19 @@ export default function Home() {
             </ul>
           </div>
           <div className="release-action">
-            <a className="download-card" href={downloadHref} download={downloadAttribute}>
+            <a
+              className="download-card"
+              href={INSTALLER_URL}
+              download={IS_LOCAL_INSTALLER ? INSTALLER_FILE : undefined}
+              aria-label="下载 Windows v1.1.1 安装包"
+            >
               <span>
-                <small>WINDOWS x64 · v0.9.5 · 约 152 MB</small>
-                <strong>下载 0.9.5 安装包</strong>
+                <small>WINDOWS x64 · v1.1.1 · 约 200 MB</small>
+                <strong>Windows 安装包已就绪</strong>
               </span>
               <b>↓</b>
             </a>
-            <p>支持 Windows 10 / 11 64 位</p>
+            <p>支持 Windows 10 / 11 64 位 · 点击即开始下载</p>
           </div>
         </div>
       </section>

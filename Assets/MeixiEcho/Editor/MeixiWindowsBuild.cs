@@ -10,10 +10,21 @@ namespace MeixiEcho.Editor
     public static class MeixiWindowsBuild
     {
         private const string ApplicationIconPath = "Assets/MeixiEcho/Art/Logos/meixi_app_icon.png";
+        // Builds are invoked explicitly by the release workflow; do not suppress a
+        // rebuild when the scene generator or runtime scripts have just changed.
+        private const double DuplicateBuildCooldownSeconds = 0d;
+        private static double lastSuccessfulBuildAt = double.NegativeInfinity;
 
         [MenuItem("梅溪回响/构建 Windows Demo")]
         public static void BuildWindowsDemo()
         {
+            double now = EditorApplication.timeSinceStartup;
+            if (now - lastSuccessfulBuildAt < DuplicateBuildCooldownSeconds)
+            {
+                Debug.LogWarning("已忽略重复的 Windows 构建请求：上一份成功产物刚刚生成。请等待五分钟或重启编辑器后再主动重建。");
+                return;
+            }
+
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ConfigureApplicationIcon();
             MeixiAnimationSetup.EnsureAssets();
@@ -24,11 +35,26 @@ namespace MeixiEcho.Editor
             // Recreate the tiny theatre bootstrap scene. Its visual set is generated
             // after load so the Windows level stream stays stable across rebuilds.
             MeixiTheatreSceneBuilder.EnsureSceneBatch();
+            string chapterThreeScene = Path.GetFullPath(Path.Combine(Application.dataPath, "Scenes", "MeixiChapterThree.unity"));
+            if (!File.Exists(chapterThreeScene))
+                throw new FileNotFoundException("Chapter three scene was not found.", chapterThreeScene);
+            MeixiChapterThreeSceneBuilder.BakeDetailedSceneBatch();
             string outputDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Build", "Windows"));
             Directory.CreateDirectory(outputDirectory);
             string executable = Path.Combine(outputDirectory, "MeixiEcho.exe");
+            for (int shot = 0; shot < 8; shot++)
+            {
+                string source = Path.Combine(Application.streamingAssetsPath, "ChapterThreeEnding", $"Shot{shot:00}.mp4");
+                if (!File.Exists(source) || new FileInfo(source).Length == 0)
+                    throw new BuildFailedException("缺少结局动画，禁止生成不完整安装包：" + source);
+            }
 
-            string[] scenes = { "Assets/Scenes/MeixiEditable.unity", "Assets/Scenes/MeixiTheatre.unity" };
+            string[] scenes =
+            {
+                "Assets/Scenes/MeixiEditable.unity",
+                "Assets/Scenes/MeixiTheatre.unity",
+                "Assets/Scenes/MeixiChapterThree.unity"
+            };
             var options = new BuildPlayerOptions
             {
                 scenes = scenes,
@@ -39,6 +65,7 @@ namespace MeixiEcho.Editor
 
             PlayerSettings.companyName = "Meixi Digital Culture Lab";
             PlayerSettings.productName = "梅溪回响";
+            PlayerSettings.bundleVersion = "1.1.1";
             PlayerSettings.defaultScreenWidth = 1920;
             PlayerSettings.defaultScreenHeight = 1080;
             PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
@@ -48,6 +75,15 @@ namespace MeixiEcho.Editor
             BuildReport report = BuildPipeline.BuildPlayer(options);
             if (report.summary.result == BuildResult.Succeeded)
             {
+                for (int shot = 0; shot < 8; shot++)
+                {
+                    string relative = Path.Combine("ChapterThreeEnding", $"Shot{shot:00}.mp4");
+                    string source = Path.Combine(Application.streamingAssetsPath, relative);
+                    string packaged = Path.Combine(outputDirectory, "MeixiEcho_Data", "StreamingAssets", relative);
+                    if (!File.Exists(packaged) || new FileInfo(packaged).Length != new FileInfo(source).Length)
+                        throw new BuildFailedException("结局视频漏包：" + packaged);
+                }
+                lastSuccessfulBuildAt = EditorApplication.timeSinceStartup;
                 string minOperaNotice = Path.GetFullPath(Path.Combine(Application.dataPath,
                     "MeixiEcho", "ThirdPartyNotices", "MinOperaPrelude.md"));
                 if (File.Exists(minOperaNotice))
@@ -58,8 +94,13 @@ namespace MeixiEcho.Editor
             }
             else
             {
-                Debug.LogError($"Windows 构建失败：{report.summary.result}");
+                throw new BuildFailedException($"Windows 构建失败：{report.summary.result}，错误数 {report.summary.totalErrors}");
             }
+        }
+
+        public static void QueueWindowsBuild()
+        {
+            EditorApplication.delayCall += BuildWindowsDemo;
         }
 
         [MenuItem("Meixi Echo/Configure Application Icon")]

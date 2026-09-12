@@ -65,6 +65,7 @@ namespace MeixiEcho
 
             CreatePortal(root.transform, cyan, gold);
             CreateWorldLabel(root.transform, timber, gold);
+            CreateChapterThreeBranch(root.transform, timber, gold);
 
             GameObject trigger = new("第二章_古戏台加载触发区");
             trigger.transform.SetParent(root.transform, false);
@@ -165,6 +166,44 @@ namespace MeixiEcho
                 textRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 textRenderer.receiveShadows = false;
             }
+        }
+
+        private static void CreateChapterThreeBranch(Transform parent, Material timber, Material gold)
+        {
+            Transform existing = parent.Find("第三章民宿路");
+            if (existing != null) return;
+            GameObject branch = new("第三章民宿路");
+            branch.transform.SetParent(parent, false);
+            Material slate = Material("民宿支路湿青石", new Color(.19f, .27f, .28f), .20f);
+            for (int i = 0; i < 13; i++)
+            {
+                float x = 3.5f + i * .72f;
+                float z = 27.8f + Mathf.Sin(i * .55f) * .08f;
+                Box("民宿支路青石", branch.transform, new Vector3(x, .02f, z), new Vector3(.68f, .12f, 2.05f),
+                    slate, true).transform.rotation = Quaternion.Euler(0f, Mathf.Sin(i * .7f) * 2.2f, 0f);
+            }
+            for (int side = -1; side <= 1; side += 2)
+            {
+                for (int i = 0; i < 6; i++)
+                {
+                    float x = 4.2f + i * 1.35f;
+                    Box("民宿支路木桩", branch.transform, new Vector3(x, .72f, 26.45f + side * .02f), new Vector3(.12f, 1.45f, .12f), timber, true);
+                    if (i % 2 == 0) CreateLantern(branch.transform, new Vector3(x, 1.32f, 26.18f + side * .04f), timber, gold);
+                }
+            }
+            Box("民宿支路门架", branch.transform, new Vector3(13.15f, 2.5f, 27.8f), new Vector3(.4f, 5f, 3f), timber, true);
+            Box("民宿支路门楣", branch.transform, new Vector3(13.15f, 4.7f, 27.8f), new Vector3(3.1f, .42f, .44f), timber, true);
+            GameObject label = new("第三章入口文字");
+            label.transform.SetParent(branch.transform, false);
+            label.transform.position = new Vector3(13.15f, 4.12f, 27.56f);
+            TextMesh text = label.AddComponent<TextMesh>();
+            text.text = "第三章 · 梅溪民宿"; text.anchor = TextAnchor.MiddleCenter; text.alignment = TextAlignment.Center; text.fontSize = 64; text.characterSize = .055f; text.color = new Color(1f, .77f, .34f);
+            text.font = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "SimHei", "Arial" }, 64);
+            GameObject trigger = new("第三章民宿加载触发区");
+            trigger.transform.SetParent(branch.transform, false);
+            trigger.transform.position = new Vector3(12.75f, 1.5f, 27.8f);
+            BoxCollider collider = trigger.AddComponent<BoxCollider>(); collider.isTrigger = true; collider.size = new Vector3(2.4f, 3.1f, 3.0f);
+            trigger.AddComponent<ChapterThreeRouteExit>();
         }
 
         private static void CreateLantern(Transform parent, Vector3 position, Material timber, Material glow)

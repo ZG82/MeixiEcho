@@ -2276,18 +2276,15 @@ namespace MeixiEcho
             var mouse = Mouse.current;
             if (!rhythmFocus && mouse != null)
             {
-#if UNITY_EDITOR
-                // Clicking the Game view after inspecting an object often releases
-                // the cursor in the Editor. Capture it again instead of silently
-                // disabling all camera input.
                 MeixiGame3D owner = FindAnyObjectByType<MeixiGame3D>();
-                if ((owner == null || !owner.PointerUiOpen) &&
-                    MeixiCursorState.IsPointerMode && mouse.leftButton.wasPressedThisFrame)
+                // Right-drag recovers gameplay look in both Editor and Windows.
+                // A real modal or cinematic always keeps ownership of the pointer.
+                bool uiOwnsPointer = owner != null && (owner.PointerUiOpen || owner.CinematicInputLocked);
+                if (!uiOwnsPointer && MeixiCursorState.IsPointerMode && mouse.rightButton.isPressed)
                 {
                     MeixiCursorState.SetGameplay();
                 }
-#endif
-                bool acceptsLookInput = !MeixiCursorState.IsPointerMode || mouse.rightButton.isPressed;
+                bool acceptsLookInput = !uiOwnsPointer && !MeixiCursorState.GameplayInputBlocked && Time.timeScale > 0f;
                 if (acceptsLookInput && Time.unscaledTime >= lookInputBlockedUntil)
                 {
                     Vector2 rawDelta = Vector2.ClampMagnitude(mouse.delta.ReadValue(), 32f);

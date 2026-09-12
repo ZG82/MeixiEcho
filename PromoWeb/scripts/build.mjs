@@ -8,9 +8,14 @@ const vinextCli = fileURLToPath(
 );
 const staticClient = fileURLToPath(new URL("../dist/client/", import.meta.url));
 const staticExport = fileURLToPath(new URL("../out/", import.meta.url));
-const obsoleteInstaller = fileURLToPath(
-  new URL("../out/downloads/MeixiEcho_v0.9.3_Windows_x64_Setup.exe", import.meta.url),
-);
+const deploymentExclusions = [
+  "downloads/MeixiEcho_v0.9.3_Windows_x64_Setup.exe",
+  "downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe",
+  "media/meixi-echo-promo-30s.mp4",
+  "media/meixi-echo-campaign-poster.png",
+  "media/meixi-echo-campaign-poster-v2.png",
+  "media/meixi-echo-v095-terminal-book-keyart.png",
+].map((fileName) => fileURLToPath(new URL(`../out/${fileName}`, import.meta.url)));
 
 function syncStaticExport() {
   const sourceIndex = fileURLToPath(new URL("../dist/client/index.html", import.meta.url));
@@ -20,7 +25,7 @@ function syncStaticExport() {
 
   rmSync(staticExport, { recursive: true, force: true });
   cpSync(staticClient, staticExport, { recursive: true });
-  rmSync(obsoleteInstaller, { force: true });
+  for (const artifact of deploymentExclusions) rmSync(artifact, { force: true });
   process.stdout.write("[build] refreshed static export in out/.\n");
 }
 

@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=2160, initial-scale=1" />
+  <title>《梅溪回响》宣传海报</title>
+  <style>
+    :root {
+      --gold: #f5d68a;
+      --gold-deep: #a8792f;
+      --cyan: #67e6ef;
+      --jade: #387b58;
+      --paper: #f5efdc;
+      --ink: #061017;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 2160px;
+      height: 3840px;
+      margin: 0;
+      overflow: hidden;
+      background: #02070b;
+    }
+
+    body {
+      color: var(--paper);
+      font-family: "Microsoft YaHei", "DengXian", sans-serif;
+    }
+
+    .poster {
+      position: relative;
+      width: 2160px;
+      height: 3840px;
+      overflow: hidden;
+      isolation: isolate;
+      background: #061017;
+    }
+
+    .key-art {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 50%;
+      filter: saturate(1.08) contrast(1.045) brightness(.94);
+      z-index: -5;
+    }
+
+    .grade,
+    .top-veil,
+    .bottom-veil,
+    .vignette,
+    .paper-grain,
+    .depth-frame,
+    .edge-light {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .grade {
+      z-index: -4;
+      background:
+        radial-gradient(circle at 24% 53%, rgba(49, 226, 233, .13), transparent 34%),
+        radial-gradient(circle at 81% 41%, rgba(213, 28, 25, .14), transparent 31%),
+        linear-gradient(180deg, rgba(1, 8, 15, .12), transparent 48%, rgba(0, 4, 8, .22));
+      mix-blend-mode: screen;
+    }
+
+    .top-veil {
+      z-index: -3;
+      height: 1120px;
+      background: linear-gradient(180deg, rgba(2, 9, 15, .88) 0%, rgba(3, 12, 19, .50) 48%, transparent 100%);
+    }
+
+    .bottom-veil {
+      z-index: 1;
+      top: auto;
+      height: 1000px;
+      background:
+        linear-gradient(180deg, transparent 0%, rgba(3, 11, 15, .72) 26%, rgba(2, 9, 12, .96) 70%, #02090d 100%);
+    }
+
+    .vignette {
+      z-index: 2;
+      box-shadow: inset 0 0 260px 100px rgba(0, 0, 0, .72);
+    }
+
+    .paper-grain {
+      z-index: 3;
+      opacity: .15;
+      mix-blend-mode: soft-light;
+      background-image:
+        repeating-linear-gradient(0deg, transparent 0 5px, rgba(255,255,255,.028) 6px),
+        repeating-linear-gradient(90deg, transparent 0 7px, rgba(0,0,0,.035) 8px);
+    }
+
+    .depth-frame {
+      z-index: 4;
+      inset: 92px;
+      border: 2px solid rgba(245, 214, 138, .45);
+      box-shadow:
+        inset 0 0 0 8px rgba(3, 14, 19, .35),
+        0 0 0 1px rgba(103, 230, 239, .25),
+        0 0 54px rgba(103, 230, 239, .18);
+      clip-path: polygon(0 0, 38% 0, 38% 12px, 62% 12px, 62% 0, 100% 0, 100% 100%, 0 100%);
+    }
+
+    .depth-frame::before,
+    .depth-frame::after {
+      content: "";
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      border-color: var(--gold);
+      opacity: .85;
+      filter: drop-shadow(0 0 14px rgba(245, 214, 138, .55));
+    }
+
+    .depth-frame::before {
+      left: -3px;
+      top: -3px;
+      border-left: 8px solid;
+      border-top: 8px solid;
+    }
+
+    .depth-frame::after {
+      right: -3px;
+      bottom: -3px;
+      border-right: 8px solid;
+      border-bottom: 8px solid;
+    }
+
+    .edge-light {
+      z-index: 5;
+      inset: 56px;
+      border-left: 1px solid rgba(103, 230, 239, .35);
+      border-right: 1px solid rgba(225, 52, 42, .27);
+      mask-image: linear-gradient(180deg, transparent 4%, #000 22%, #000 78%, transparent 96%);
+    }
+
+    .masthead {
+      position: absolute;
+      z-index: 12;
+      left: 150px;
+      right: 150px;
+      top: 150px;
+      text-align: center;
+    }
+
+    .genre {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 26px;
+      color: rgba(230, 248, 248, .82);
+      font-size: 38px;
+      font-weight: 500;
+      letter-spacing: 16px;
+      text-indent: 16px;
+      text-shadow: 0 3px 14px #000;
+    }
+
+    .genre::before,
+    .genre::after {
+      content: "";
+      width: 180px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(103, 230, 239, .85));
+    }
+
+    .genre::after { transform: scaleX(-1); }
+
+    h1 {
+      position: relative;
+      margin: 38px auto 4px;
+      width: max-content;
+      font-family: "STXingkai", "FZShuTi", "STKaiti", "KaiTi", serif;
+      font-size: 330px;
+      line-height: .96;
+      font-weight: 500;
+      letter-spacing: 12px;
+      text-indent: 12px;
+      color: #f6edcf;
+      -webkit-text-stroke: 2px rgba(255, 220, 130, .72);
+      text-shadow:
+        0 5px 0 #5b3b16,
+        0 14px 14px rgba(0, 0, 0, .88),
+        0 0 44px rgba(245, 214, 138, .48),
+        -11px 9px 0 rgba(50, 218, 225, .18),
+        11px -5px 0 rgba(184, 37, 31, .13);
+      transform: perspective(1200px) rotateX(2deg) translateZ(40px);
+    }
+
+    h1::after {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      bottom: -44px;
+      height: 18px;
+      background: linear-gradient(90deg, transparent, var(--cyan), var(--gold), #d03b32, transparent);
+      clip-path: polygon(0 42%, 43% 42%, 48% 0, 52% 100%, 57% 42%, 100% 42%, 100% 58%, 57% 58%, 52% 100%, 48% 0, 43% 58%, 0 58%);
+      filter: drop-shadow(0 0 12px rgba(103, 230, 239, .55));
+    }
+
+    .english-title {
+      margin: 56px 0 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--gold);
+      font-size: 49px;
+      font-weight: 600;
+      letter-spacing: 29px;
+      text-indent: 29px;
+      text-shadow: 0 3px 16px #000, 0 0 25px rgba(245, 214, 138, .34);
+    }
+
+    .slogan {
+      position: absolute;
+      z-index: 11;
+      left: 150px;
+      top: 1050px;
+      width: 810px;
+      padding-left: 48px;
+      border-left: 7px solid var(--cyan);
+      filter: drop-shadow(0 8px 20px rgba(0,0,0,.8));
+    }
+
+    .slogan b {
+      display: block;
+      font-family: "STXingkai", "FZShuTi", "STKaiti", "KaiTi", serif;
+      color: #f7efd4;
+      font-size: 100px;
+      font-weight: 500;
+      line-height: 1.18;
+      letter-spacing: 5px;
+      text-shadow: 0 5px 0 rgba(50,35,18,.75), 0 0 34px rgba(245,214,138,.32);
+    }
+
+    .slogan b span {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .slogan span {
+      display: block;
+      margin-top: 32px;
+      width: 680px;
+      color: rgba(223, 244, 242, .88);
+      font-size: 34px;
+      line-height: 1.8;
+      letter-spacing: 6px;
+    }
+
+    .gameplay-band {
+      position: absolute;
+      z-index: 18;
+      left: 120px;
+      right: 120px;
+      top: 2525px;
+      height: 530px;
+      padding: 42px 54px 40px;
+      color: rgba(245, 239, 220, .92);
+      background:
+        linear-gradient(110deg, rgba(3, 20, 27, .91), rgba(5, 13, 19, .80) 52%, rgba(24, 8, 10, .86)),
+        radial-gradient(circle at 10% 50%, rgba(103,230,239,.13), transparent 38%);
+      border-top: 2px solid rgba(103, 230, 239, .62);
+      border-bottom: 2px solid rgba(245, 214, 138, .52);
+      box-shadow: 0 26px 80px rgba(0,0,0,.62), inset 0 0 70px rgba(103,230,239,.035);
+      backdrop-filter: blur(12px);
+    }
+
+    .gameplay-heading {
+      display: flex;
+      align-items: flex-end;
+      gap: 26px;
+      margin-bottom: 34px;
+      white-space: nowrap;
+    }
+
+    .gameplay-heading small {
+      color: var(--cyan);
+      font-family: Georgia, serif;
+      font-size: 23px;
+      letter-spacing: 9px;
+    }
+
+    .gameplay-heading h2 {
+      margin: 0;
+      color: var(--gold);
+      font-family: "STKaiti", "KaiTi", serif;
+      font-size: 54px;
+      font-weight: 600;
+      letter-spacing: 5px;
+    }
+
+    .gameplay-heading::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      margin-bottom: 15px;
+      background: linear-gradient(90deg, rgba(245,214,138,.65), transparent);
+    }
+
+    .gameplay-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .gameplay-card {
+      position: relative;
+      min-width: 0;
+      height: 332px;
+      padding: 12px 42px 0;
+      border-left: 1px solid rgba(245, 214, 138, .28);
+    }
+
+    .gameplay-card:first-child {
+      padding-left: 4px;
+      border-left: 0;
+    }
+
+    .gameplay-card:last-child { padding-right: 4px; }
+
+    .gameplay-index {
+      position: absolute;
+      right: 28px;
+      top: -12px;
+      color: rgba(103, 230, 239, .12);
+      font-family: Georgia, serif;
+      font-size: 100px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .gameplay-card:nth-child(3) .gameplay-index,
+    .gameplay-card:nth-child(4) .gameplay-index {
+      color: rgba(228, 64, 47, .14);
+    }
+
+    .gameplay-card h3 {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 22px;
+      color: #f8eed0;
+      font-family: "STKaiti", "KaiTi", serif;
+      font-size: 45px;
+      letter-spacing: 4px;
+    }
+
+    .gameplay-card p {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      color: rgba(222, 238, 236, .82);
+      font-size: 27px;
+      line-height: 1.62;
+      letter-spacing: 2px;
+    }
+
+    .key-pills {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .key-pills b {
+      display: inline-block;
+      min-width: 48px;
+      padding: 7px 12px;
+      color: var(--gold);
+      background: rgba(2, 10, 14, .72);
+      border: 1px solid rgba(103, 230, 239, .45);
+      font-family: Georgia, serif;
+      font-size: 23px;
+      line-height: 1;
+      text-align: center;
+      box-shadow: 0 0 18px rgba(103,230,239,.10);
+    }
+
+    .footer-panel {
+      position: absolute;
+      z-index: 20;
+      left: 120px;
+      right: 120px;
+      bottom: 116px;
+      height: 600px;
+      display: grid;
+      grid-template-columns: 410px 1fr 490px;
+      gap: 54px;
+      align-items: center;
+      padding: 58px 62px;
+      background:
+        linear-gradient(120deg, rgba(4, 20, 24, .88), rgba(2, 11, 16, .96)),
+        radial-gradient(circle at 12% 50%, rgba(56, 123, 88, .25), transparent 48%);
+      border: 1px solid rgba(245, 214, 138, .43);
+      box-shadow: 0 36px 110px rgba(0, 0, 0, .72), inset 0 0 58px rgba(103,230,239,.04);
+      backdrop-filter: blur(12px);
+    }
+
+    .footer-panel::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border: 1px solid rgba(103, 230, 239, .18);
+      pointer-events: none;
+    }
+
+    .logo-shell {
+      position: relative;
+      width: 350px;
+      height: 350px;
+      margin: 0 auto;
+      overflow: hidden;
+      border-radius: 50%;
+      background: #f6f5ee;
+      border: 8px solid rgba(245, 214, 138, .9);
+      box-shadow: 0 0 0 12px rgba(56, 123, 88, .65), 0 0 48px rgba(103, 230, 239, .22);
+    }
+
+    .team-logo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.22);
+    }
+
+    .credit {
+      align-self: center;
+      min-width: 0;
+    }
+
+    .credit .seal-line {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      color: var(--cyan);
+      font-family: Georgia, serif;
+      font-size: 25px;
+      letter-spacing: 10px;
+    }
+
+    .credit .seal-line::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(103,230,239,.7), transparent);
+    }
+
+    .credit h2 {
+      margin: 26px 0 18px;
+      max-width: 920px;
+      color: #f7efd7;
+      font-family: "STKaiti", "KaiTi", serif;
+      font-size: 61px;
+      font-weight: 600;
+      line-height: 1.38;
+      letter-spacing: 2px;
+      text-shadow: 0 4px 22px rgba(0,0,0,.9);
+    }
+
+    .credit p {
+      margin: 0;
+      color: rgba(218, 238, 235, .72);
+      font-size: 28px;
+      letter-spacing: 5px;
+    }
+
+    .qr-block {
+      align-self: center;
+      text-align: center;
+    }
+
+    .qr-shell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 456px;
+      height: 456px;
+      margin: 0 auto;
+      background: #fff;
+      border: 7px solid var(--gold);
+      box-shadow: 0 0 0 10px rgba(255,255,255,.08), 0 0 44px rgba(245,214,138,.25);
+    }
+
+    .qr-shell::before,
+    .qr-shell::after {
+      content: "";
+      position: absolute;
+      width: 52px;
+      height: 52px;
+      border-color: var(--cyan);
+    }
+
+    .qr-shell::before {
+      left: -18px;
+      top: -18px;
+      border-left: 7px solid;
+      border-top: 7px solid;
+    }
+
+    .qr-shell::after {
+      right: -18px;
+      bottom: -18px;
+      border-right: 7px solid;
+      border-bottom: 7px solid;
+    }
+
+    .qr-code {
+      width: 400px;
+      height: 400px;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    .qr-label {
+      margin-top: 25px;
+      color: var(--gold);
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: 9px;
+      text-indent: 9px;
+      text-shadow: 0 3px 12px #000;
+    }
+
+    .brand-seal {
+      position: absolute;
+      z-index: 12;
+      right: 126px;
+      top: 920px;
+      width: 116px;
+      height: 116px;
+      display: grid;
+      place-items: center;
+      border: 4px solid rgba(228, 64, 47, .88);
+      color: #f2c4a8;
+      background: rgba(87, 12, 10, .55);
+      font-family: "STXingkai", "KaiTi", serif;
+      font-size: 70px;
+      transform: rotate(6deg);
+      box-shadow: 0 0 28px rgba(221, 42, 30, .33);
+    }
+  </style>
+</head>
+<body>
+  <main class="poster" aria-label="《梅溪回响》游戏宣传海报">
+    <img class="key-art" src="assets/meixi-campaign-base.png" alt="雨夜梅溪村中，林默以魂音对抗噪音" />
+    <div class="grade"></div>
+    <div class="top-veil"></div>
+    <div class="bottom-veil"></div>
+    <div class="vignette"></div>
+    <div class="paper-grain"></div>
+    <div class="depth-frame"></div>
+    <div class="edge-light"></div>
+
+    <header class="masthead">
+      <div class="genre">第三人称 · 剧情 · 动作音游</div>
+      <h1>梅溪回响</h1>
+      <p class="english-title">MEIXI ECHO</p>
+    </header>
+
+    <section class="slogan">
+      <b><span>让失去的声音</span><span>重新响起</span></b>
+      <span>用节拍战斗，用聆听找回人与土地之间的连接。</span>
+    </section>
+
+    <div class="brand-seal" aria-hidden="true">回</div>
+
+    <section class="gameplay-band" aria-label="核心玩法介绍">
+      <header class="gameplay-heading">
+        <small>CORE GAMEPLAY</small>
+        <h2>听见村庄，也回应它的节拍</h2>
+      </header>
+      <div class="gameplay-grid">
+        <article class="gameplay-card">
+          <span class="gameplay-index">01</span>
+          <h3>探索聆听</h3>
+          <p>沿溪流、古桥与民居自由探索，采集水滴、竹叶、脚步与乡音，拼合村庄的声音记忆。</p>
+        </article>
+        <article class="gameplay-card">
+          <span class="gameplay-index">02</span>
+          <h3>节拍战斗</h3>
+          <p>看清锁定、踩准落点，以近战、远程音符和瞬身闪避回应噪音攻击。</p>
+          <div class="key-pills"><b>J</b><b>K</b><b>SPACE</b></div>
+        </article>
+        <article class="gameplay-card">
+          <span class="gameplay-index">03</span>
+          <h3>双手合奏</h3>
+          <p>让持续声部与主旋律同时推进，在高压节奏中完成真正的双手协奏。</p>
+          <div class="key-pills"><b>Q</b><b>E</b><b>J</b><b>K</b></div>
+        </article>
+        <article class="gameplay-card">
+          <span class="gameplay-index">04</span>
+          <h3>叙事解谜</h3>
+          <p>阅读泛黄日记、倾听村民对话、唤醒传统乐器，并解开古戏台深处的机关与回响。</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer-panel">
+      <div class="logo-shell">
+        <img class="team-logo" src="assets/shengnuan-team-logo.jpg" alt="生暖乡野实践团队 Logo" />
+      </div>
+
+      <div class="credit">
+        <div class="seal-line">HEFEI UNIVERSITY OF TECHNOLOGY</div>
+        <h2>合肥工业大学生暖乡野实践团队出品</h2>
+        <p>以声音为桥 · 让乡野记忆被听见</p>
+      </div>
+
+      <div class="qr-block">
+        <div class="qr-shell">
+          <img class="qr-code" src="assets/promo-qr.jpg" alt="游戏宣发二维码" />
+        </div>
+        <div class="qr-label">扫码了解更多</div>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>

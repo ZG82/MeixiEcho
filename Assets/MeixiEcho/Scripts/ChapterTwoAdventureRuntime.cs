@@ -90,6 +90,7 @@ namespace MeixiEcho
         private GameObject keypadPanel;
         private GameObject defeatPanel;
         private GameObject staminaPanel;
+        private MeixiSharedChapterPauseMenu pauseMenu;
         private Button inventoryCloseButton;
         private Button inventoryInspectButton;
         private Button inspectCloseButton;
@@ -770,12 +771,26 @@ namespace MeixiEcho
         private void Update()
         {
             if (!armed) return;
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame && pauseMenu != null)
+            {
+                if (pauseMenu.IsPaused)
+                {
+                    pauseMenu.HandleEscape();
+                    return;
+                }
+                if (!inputModal && phase != Phase.Ending)
+                {
+                    pauseMenu.SetPaused(true);
+                    return;
+                }
+            }
+            if (pauseMenu != null && pauseMenu.IsPaused) return;
             if (flashlightCollected)
             {
                 RevealHeritageMural();
                 UpdateCeilingPuppets();
             }
-            Keyboard keyboard = Keyboard.current;
             if (inputModal)
             {
                 bool pointerModal = (defeatPanel != null && defeatPanel.activeSelf) ||
@@ -849,6 +864,25 @@ namespace MeixiEcho
             }
             mazeMirrorSurfaces.Clear();
             if (mazeReflectionCamera != null) Destroy(mazeReflectionCamera.gameObject);
+        }
+
+        private string GetPausePhaseLabel()
+        {
+            return phase switch
+            {
+                Phase.WaitingForQuiz => "戏台问答",
+                Phase.Puzzle => "戏台调查",
+                Phase.GateSequence => "门锁回响",
+                Phase.Chase => "木偶追逐",
+                _ => "章节归档"
+            };
+        }
+
+        private void OnAdventurePauseChanged(bool paused)
+        {
+            if (stageRuntime != null && phase == Phase.Puzzle)
+                stageRuntime.SetSharedGameplayControlsActive(!paused && !inputModal);
+            if (!paused && !inputModal) MeixiCursorState.SetGameplay();
         }
 
         private void UpdateInventoryInput(Keyboard keyboard)
@@ -1455,7 +1489,14 @@ namespace MeixiEcho
             Transform volumeTransform = target.transform.Find("InteractionVolume");
             GameObject volumeObject = volumeTransform != null ? volumeTransform.gameObject : new GameObject("InteractionVolume");
             if (volumeTransform == null) volumeObject.transform.SetParent(target.transform, false);
-            BoxCollider volume = volumeObject.GetComponent<BoxCollider>() ?? volumeObject.AddComponent<BoxCollider>();
+            // UnityEngine.Object uses a native-aware null operator. Avoid ?? here:
+            // during scene reconstruction GetComponent can briefly return a
+            // managed wrapper whose native collider is already pending destroy.
+            // The C# null-coalescing operator would keep that stale wrapper and
+            // the first property write would abort all chapter-two UI setup.
+            BoxCollider volume = volumeObject.GetComponent<BoxCollider>();
+            if (volume == null) volume = volumeObject.AddComponent<BoxCollider>();
+            if (volume == null) return null;
             Bounds worldBounds = new(target.transform.position, Vector3.one * .35f);
             bool foundRenderer = false;
             foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
@@ -3157,10 +3198,10 @@ namespace MeixiEcho
             phase = Phase.Ending;
             inputModal = true;
             objectiveText.text = "你逃出了镜像迷宫 · 木偶的脚步停在黑暗里";
-            SetHintVisible(true, "余音把你送回最初的梅溪村……");
+            SetHintVisible(true, "余音沿着青石路，指向实践队入住的梅溪民宿……");
             yield return FadeScreen(1f, 1.15f);
             if (!Application.isBatchMode) MeixiLocalProgress.MarkChapterTwoCompleted();
-            yield return LoadSceneBehindFade("MeixiEditable");
+            yield return LoadSceneBehindFade(MeixiChapterRouter.ChapterThreeScene);
         }
 
         private void CatchPlayer()
@@ -5297,6 +5338,10 @@ namespace MeixiEcho
             BuildFadeUi();
             RefreshInventory();
             inventoryHud.SetActive(false);
+            pauseMenu = GetComponent<MeixiSharedChapterPauseMenu>() ?? gameObject.AddComponent<MeixiSharedChapterPauseMenu>();
+            pauseMenu.Initialize(canvas, "CHAPTER 02  /  古戏台",
+                () => $"乡 村 数 字 文 化 实 践  ·  第 {MeixiLocalProgress.PracticeNumber:00} 次\n调查物件 {inventory.Count}/{InventoryCapacity}  ·  当前阶段 {GetPausePhaseLabel()}",
+                OnAdventurePauseChanged);
         }
 
         private void BuildKeypadUi()
@@ -5637,11 +5682,19 @@ namespace MeixiEcho
         private static void PromoteModalCanvas(GameObject panel, int sortingOrder)
         {
             if (panel == null) return;
-            Canvas modalCanvas = panel.GetComponent<Canvas>() ?? panel.AddComponent<Canvas>();
-            modalCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            modalCanvas.overrideSorting = true;
-            modalCanvas.sortingOrder = sortingOrder;
-            if (panel.GetComponent<GraphicRaycaster>() == null) panel.AddComponent<GraphicRaycaster>();
+            // These full-screen pages already live below the chapter's root
+            // ScreenSpaceOverlay canvas. Adding a second Canvas while their
+            // active hierarchy is being built can invalidate the component in
+            // the same frame on some Unity/URP versions, aborting the entire
+            // chapter-two UI (including the shared pause page). Keep them on
+            // the stable root canvas and use sibling order for modal priority.
+            panel.transform.SetAsLastSibling();
+            Canvas modalCanvas = panel.GetComponent<Canvas>();
+            if (modalCanvas != null)
+            {
+                modalCanvas.overrideSorting = true;
+                modalCanvas.sortingOrder = sortingOrder;
+            }
         }
 
         private static void EnsureAdventureEventSystem()

@@ -22,20 +22,23 @@ test("renders the Meixi Echo promotional page", async () => {
   const html = await response.text();
   assert.match(html, /<title>梅溪回响 · 第三人称乡村音乐冒险<\/title>/);
   assert.match(html, /MEIXI ECHO/);
-  assert.match(html, /v0\.9\.5/);
-  assert.match(html, /第一章、第二章完整版现已完成/);
-  assert.match(html, /基础窗口的 2\.10 倍/);
-  assert.match(html, /终末之书会在地图中央显现/);
-  assert.match(html, /href="\/downloads\/MeixiEcho_v0\.9\.5_Windows_x64_Setup\.exe"/);
-  assert.match(html, /下载 0\.9\.5 安装包/);
+  assert.match(html, /v1\.1\.1/);
+  assert.match(html, /三章完整，终章已抵达/);
+  assert.match(html, /七日回声/);
+  assert.match(html, /终末之书/);
+  assert.match(html, /现已完成 · 多重选择等待书写/);
+  assert.match(html, /Windows 安装包已就绪/);
+  assert.match(html, /class="hero-canvas"/);
+  assert.match(html, /class="particle-reveal"/);
+  assert.match(html, /class="particle-caption"/);
   assert.match(html, /<button class="text-link gameplay-jump" type="button">查看玩法/);
   assert.doesNotMatch(html, /<a class="text-link" href="#gameplay">/);
   assert.doesNotMatch(html, /gpt[- ]?image/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|SkeletonPreview/);
 });
 
-test("ships the campaign art and v0.9.5 release download", async () => {
-  const [page, css, packageJson, webReadme, exportedHtml, poster, villagePoster, battlePoster, prologuePoster, chapterTwoPoster, chapterTwoInstrumentPoster, mirrorMazePoster, campaignPoster, installer, exportedInstaller] = await Promise.all([
+test("ships the final-chapter poster and v1.1.1 release page", async () => {
+  const [page, css, packageJson, webReadme, exportedHtml, poster, villagePoster, battlePoster, prologuePoster, chapterTwoPoster, chapterTwoInstrumentPoster, mirrorMazePoster, chapterThreeHomestayPoster, chapterThreeArchivePoster, finalChapterPoster, installer] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -48,24 +51,28 @@ test("ships the campaign art and v0.9.5 release download", async () => {
     stat(new URL("../public/media/poster-chapter-two-old-song.png", import.meta.url)),
     stat(new URL("../public/media/poster-chapter-two-instruments.png", import.meta.url)),
     stat(new URL("../public/media/poster-chapter-two-mirror-maze.png", import.meta.url)),
-    stat(new URL("../public/media/meixi-echo-v095-terminal-book-keyart.png", import.meta.url)),
-    stat(new URL("../public/downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe", import.meta.url)),
-    stat(new URL("../out/downloads/MeixiEcho_v0.9.5_Windows_x64_Setup.exe", import.meta.url)),
+    stat(new URL("../public/media/poster-chapter-three-homestay.png", import.meta.url)),
+    stat(new URL("../public/media/poster-chapter-three-archive.png", import.meta.url)),
+    stat(new URL("../public/media/meixi-echo-chapter-three-final-poster.png", import.meta.url)),
+    stat(new URL("../out/downloads/MeixiEcho_v1.1.1_Windows_x64_Setup.exe", import.meta.url)),
   ]);
 
   assert.match(page, /ORIGINAL KEY ART/);
   assert.match(css, /hero-poster-key-art\.png/);
   assert.doesNotMatch(page, /gpt[- ]?image/i);
-  assert.match(css, /meixi-echo-v095-terminal-book-keyart\.png/);
+  assert.match(css, /meixi-echo-chapter-three-final-poster\.png/);
   assert.match(css, /poster-chapter-two-instruments\.png/);
   assert.match(css, /poster-chapter-two-mirror-maze\.png/);
+  assert.match(css, /poster-chapter-three-homestay\.png/);
+  assert.match(css, /poster-chapter-three-archive\.png/);
   assert.doesNotMatch(css, /scroll-behavior:\s*smooth/);
   const mediaUrls = [...css.matchAll(/url\('\/media\/([^']+)'\)/g)].map((match) => match[1]);
   assert.equal(new Set(mediaUrls).size, mediaUrls.length, "each visual should be used only once");
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.match(page, /NEXT_PUBLIC_DOWNLOAD_URL/);
   assert.match(webReadme, /GitHub Releases/);
-  assert.match(exportedHtml, /下载 0\.9\.5 安装包/);
+  assert.match(exportedHtml, /Windows 安装包已就绪/);
+  assert.match(exportedHtml, /三章完整，终章已抵达/);
+  assert.match(exportedHtml, /七日回声/);
   assert.doesNotMatch(exportedHtml, /gpt[- ]?image|MeixiEcho_v0\.9\.3/i);
   assert.ok(poster.size > 1_000_000, "generated poster should be a production asset");
   assert.ok(villagePoster.size > 1_000_000, "village poster should be present");
@@ -74,7 +81,11 @@ test("ships the campaign art and v0.9.5 release download", async () => {
   assert.ok(chapterTwoPoster.size > 1_000_000, "chapter two poster should be present");
   assert.ok(chapterTwoInstrumentPoster.size > 1_000_000, "chapter two instrument poster should be present");
   assert.ok(mirrorMazePoster.size > 1_000_000, "mirror maze poster should be present");
-  assert.ok(campaignPoster.size > 1_000_000, "campaign poster should be present");
-  assert.equal(installer.size, 158_843_845, "v0.9.5 installer should match the release artifact");
-  assert.equal(exportedInstaller.size, installer.size, "out should contain the current installer");
+  assert.ok(chapterThreeHomestayPoster.size > 1_000_000, "chapter three homestay poster should be present");
+  assert.ok(chapterThreeArchivePoster.size > 1_000_000, "chapter three archive poster should be present");
+  assert.ok(finalChapterPoster.size > 1_000_000, "final-chapter poster should be present");
+  assert.ok(installer.size > 100_000_000, "v1.1.1 installer should be exported to out/downloads");
+  assert.match(exportedHtml, /downloads\/MeixiEcho_v1\.1\.1_Windows_x64_Setup\.exe/);
+  assert.match(page, /MeixiEcho_v1\.1\.1_Windows_x64_Setup\.exe/);
+  assert.match(exportedHtml, /class="download-card"/);
 });

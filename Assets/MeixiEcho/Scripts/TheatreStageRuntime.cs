@@ -31,6 +31,7 @@ namespace MeixiEcho
         private GameObject stageSettingsPanel;
         private GameObject stageTerminalPanel;
         private bool stagePaused;
+        private MeixiSharedChapterPauseMenu sharedPauseMenu;
         private bool stageSettingsOpen;
         private Button stageResumeButton;
         private Button stageSettingsButton;
@@ -55,8 +56,6 @@ namespace MeixiEcho
         private AudioSource chapterMusicSource;
         private Coroutine chapterMusicFadeRoutine;
         private AudioSource endingMusicSource;
-        private GameObject endingBook;
-        private Vector3 endingBookBasePosition;
         private bool sceneTransitionActive;
         private bool endingShown;
         private bool chapterMusicDucked;
@@ -509,18 +508,12 @@ namespace MeixiEcho
             }
             if (stagePaused)
             {
-                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) SetStagePaused(false);
-                else if (mouse != null && mouse.leftButton.wasPressedThisFrame)
-                {
-                    Vector2 pointer = mouse.position.ReadValue();
-                    if (IsPointerInside(stageResumeButton, pointer)) SetStagePaused(false);
-                    else if (IsPointerInside(stageSettingsButton, pointer)) OpenStageSettings();
-                    else if (IsPointerInside(stageReturnButton, pointer)) ReturnToVillageFromPause();
-                    else if (IsPointerInside(stageQuitButton, pointer)) QuitStageGame();
-                }
+                if ((chapterTwoAdventure == null || !chapterTwoAdventure.IsArmed) &&
+                    keyboard != null && keyboard.escapeKey.wasPressedThisFrame) sharedPauseMenu.HandleEscape();
                 return;
             }
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+            if ((chapterTwoAdventure == null || !chapterTwoAdventure.IsArmed) &&
+                keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
             {
                 SetStagePaused(true);
                 return;
@@ -554,7 +547,6 @@ namespace MeixiEcho
                 UpdateMovement(!introActive);
             if (chapterTwoAdventure == null || !chapterTwoAdventure.IsTakingOverLegacyInteraction)
                 UpdateInteraction();
-            UpdateEndingBookVisual();
         }
 
         private void LateUpdate()
@@ -1209,23 +1201,6 @@ namespace MeixiEcho
 
         private void UpdateInteraction()
         {
-            if (endingBook != null)
-            {
-                Vector3 toBook = endingBook.transform.position - player.position;
-                toBook.y = 0f;
-                if (toBook.sqrMagnitude < 10.2f)
-                {
-                    hint.text = "[ E ]  拾取「余音之书」\n四件乐器的回响，正停留在翻开的书页里";
-                    if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-                    {
-                        if (!IsAutomatedPresentationRun()) MeixiLocalProgress.RecordFinalBookCollected();
-                        Destroy(endingBook);
-                        endingBook = null;
-                        ShowEndingMessage();
-                    }
-                    return;
-                }
-            }
             nearbyInstruments.RemoveAll(item => item == null || !item.IsNearby(player.position));
             TheatreInstrument current = null;
             float bestDistance = float.PositiveInfinity;
@@ -1274,7 +1249,22 @@ namespace MeixiEcho
                 ? "旧曲的四个声部已经归位，古戏台重新拥有了回响"
                 : $"已唤醒 {playedInstruments.Count} / {Mathf.Max(1, total)} 个声部 · 继续寻找发光的传统乐器";
             cameraDistance = Mathf.Max(5.4f, cameraDistance - 0.18f);
-            if (completed && !endingShown && endingBook == null) SpawnEndingBook();
+            if (completed && !endingShown) StartCoroutine(BeginLegacyChapterThreeTransition());
+        }
+
+        private IEnumerator BeginLegacyChapterThreeTransition()
+        {
+            endingShown = true;
+            objective.text = "旧曲的四个声部已经归位 · 下一站是梅溪民宿";
+            hint.text = "第二章完成 · 正在前往第三章";
+            if (IsAutomatedPresentationRun()) yield break;
+            yield return new WaitForSecondsRealtime(1.2f);
+            MeixiLocalProgress.MarkChapterTwoCompleted();
+            if (!MeixiChapterRouter.TryLoadChapterThree(false, out string error))
+            {
+                endingShown = false;
+                Debug.LogError("[MeixiChapterThree] " + error);
+            }
         }
 
         public void HideLegacyPresentationForAdventure()
@@ -1284,62 +1274,6 @@ namespace MeixiEcho
             if (culturalPreludeRoot != null) culturalPreludeRoot.SetActive(false);
             if (culturalQuizRoot != null) culturalQuizRoot.SetActive(false);
             if (endingPanel != null) endingPanel.SetActive(false);
-        }
-
-        private void SpawnEndingBook()
-        {
-            endingBook = new GameObject("舞台中央_余音之书");
-            endingBookBasePosition = new Vector3(0f, 1.66f, 6.55f);
-            endingBook.transform.position = endingBookBasePosition;
-            endingBook.transform.rotation = Quaternion.Euler(-8f, 0f, 0f);
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            Material cover = new(shader) { name = "余音之书_青黑封面", color = new Color(.035f, .15f, .15f) };
-            Material paper = new(shader) { name = "余音之书_旧纸", color = new Color(.88f, .78f, .57f) };
-            Material gold = new(shader) { name = "余音之书_金线", color = new Color(.75f, .48f, .14f) };
-            if (cover.HasProperty("_Smoothness")) cover.SetFloat("_Smoothness", .34f);
-            if (paper.HasProperty("_Smoothness")) paper.SetFloat("_Smoothness", .08f);
-            if (gold.HasProperty("_Metallic")) gold.SetFloat("_Metallic", .62f);
-            if (gold.HasProperty("_Smoothness")) gold.SetFloat("_Smoothness", .58f);
-
-            CreateBookPart("下封面", new Vector3(0f, -.10f, 0f), new Vector3(1.12f, .09f, .82f), cover);
-            CreateBookPart("书页", new Vector3(0f, 0f, 0f), new Vector3(1.03f, .15f, .74f), paper);
-            CreateBookPart("上封面", new Vector3(0f, .105f, 0f), new Vector3(1.12f, .075f, .82f), cover);
-            CreateBookPart("金色书脊", new Vector3(-.55f, .01f, 0f), new Vector3(.075f, .24f, .84f), gold);
-            for (int i = -2; i <= 2; i++)
-                CreateBookPart("封面声纹_" + i, new Vector3(.12f + i * .14f, .15f, 0f),
-                    new Vector3(.018f, .012f, .52f - Mathf.Abs(i) * .055f), gold);
-
-            Light glow = endingBook.AddComponent<Light>();
-            glow.type = LightType.Point;
-            glow.color = new Color(.30f, .88f, .78f);
-            glow.range = 4.6f;
-            glow.intensity = 2.2f;
-            glow.shadows = LightShadows.None;
-            objective.text = "四个声部已经归位 · 舞台中央出现了一本承载余音的旧书";
-            hint.text = "场域回响  ·  前往舞台中央，拾取余音之书";
-
-            void CreateBookPart(string partName, Vector3 localPosition, Vector3 localScale, Material material)
-            {
-                GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                part.name = partName;
-                part.transform.SetParent(endingBook.transform, false);
-                part.transform.localPosition = localPosition;
-                part.transform.localScale = localScale;
-                part.GetComponent<Renderer>().sharedMaterial = material;
-                Collider collider = part.GetComponent<Collider>();
-                if (collider != null) Destroy(collider);
-            }
-        }
-
-        private void UpdateEndingBookVisual()
-        {
-            if (endingBook == null) return;
-            float wave = Mathf.Sin(Time.unscaledTime * 1.65f);
-            endingBook.transform.position = endingBookBasePosition + Vector3.up * (wave * .08f);
-            endingBook.transform.Rotate(Vector3.up, Time.unscaledDeltaTime * 13f, Space.World);
-            Light glow = endingBook.GetComponent<Light>();
-            if (glow != null) glow.intensity = 1.9f + (wave + 1f) * .35f;
         }
 
         private void ShowEndingMessage()
@@ -1638,48 +1572,13 @@ namespace MeixiEcho
 
         private void BuildStagePauseUi()
         {
-            stagePausePanel = CreatePanel("第二章暂停页", canvas.transform,
-                new Color(.003f, .012f, .020f, .82f), Vector2.zero, Vector2.one);
-            GameObject pauseCard = CreatePanel("第二章暂停主卡", stagePausePanel.transform,
-                new Color(.018f, .055f, .080f, .98f), new Vector2(.34f, .16f), new Vector2(.66f, .84f));
-            PolishStagePanel(pauseCard, new Color(1f, .55f, .17f, .65f));
-            pauseCard.AddComponent<MeixiUiPanelReveal>().Configure(.24f, .90f);
+            sharedPauseMenu = GetComponent<MeixiSharedChapterPauseMenu>() ?? gameObject.AddComponent<MeixiSharedChapterPauseMenu>();
+            sharedPauseMenu.Initialize(canvas, "CHAPTER 02 / 古戏台",
+                () => $"乡村数字文化实践 · 第 {MeixiLocalProgress.PracticeNumber:00} 次",
+                ApplyStagePause, onReturn: ReturnToVillageFromPause, onArchive: OpenStageSettings);
+            stagePausePanel = sharedPauseMenu.PanelRoot;
 
-            Text pauseEyebrow = CreateText("暂停眉题", pauseCard.transform, "MEIXI RESONANCE", 16,
-                TextAnchor.MiddleCenter, new Color(.32f, .82f, .92f));
-            SetRect(pauseEyebrow.rectTransform, new Vector2(.12f, .84f), new Vector2(.88f, .92f));
-            Text pauseTitle = CreateText("暂停标题", pauseCard.transform, "魂 音 暂 歇", 48,
-                TextAnchor.MiddleCenter, new Color(1f, .78f, .34f));
-            AddTextShadow(pauseTitle, Color.black, new Vector2(3f, -3f), true);
-            SetRect(pauseTitle.rectTransform, new Vector2(.08f, .68f), new Vector2(.92f, .84f));
-            Text practice = CreateText("暂停实践记录", pauseCard.transform,
-                $"乡 村 数 字 文 化 实 践  ·  第 {MeixiLocalProgress.PracticeNumber:00} 次\n" +
-                $"累 计 倒 下  {MeixiLocalProgress.TotalDeaths:00}  次  ·  无伤重启不计入实践次数", 15,
-                TextAnchor.MiddleCenter, new Color(.48f, .90f, .88f));
-            practice.lineSpacing = 1.12f;
-            SetRect(practice.rectTransform, new Vector2(.10f, .615f), new Vector2(.90f, .685f));
-            Text controls = CreateText("第二章暂停操作", pauseCard.transform,
-                "WASD  行走     鼠标  环绕镜头\nE  演奏古乐     ESC  返回游戏\n靠近发光乐器，聆听并恢复古戏台声纹", 19,
-                TextAnchor.MiddleCenter, new Color(.74f, .87f, .93f));
-            SetRect(controls.rectTransform, new Vector2(.09f, .445f), new Vector2(.91f, .595f));
-
-            stageResumeButton = CreateButton("第二章继续", pauseCard.transform, "继 续 聆 听",
-                new Color(.62f, .18f, .07f, .98f), new Vector2(.18f, .33f), new Vector2(.82f, .44f));
-            stageResumeButton.onClick.AddListener(() => SetStagePaused(false));
-            stageSettingsButton = CreateButton("第二章设置", pauseCard.transform, "设 置 · 成 就",
-                new Color(.13f, .16f, .34f, .98f), new Vector2(.18f, .20f), new Vector2(.49f, .31f));
-            stageSettingsButton.onClick.AddListener(OpenStageSettings);
-            stageReturnButton = CreateButton("返回梅溪村", pauseCard.transform, "返 回 梅 溪 村",
-                new Color(.06f, .24f, .31f, .98f), new Vector2(.51f, .20f), new Vector2(.82f, .31f));
-            stageReturnButton.onClick.AddListener(ReturnToVillageFromPause);
-            stageQuitButton = CreateButton("第二章退出游戏", pauseCard.transform, "退 出 游 戏",
-                new Color(.30f, .07f, .08f, .98f), new Vector2(.18f, .07f), new Vector2(.82f, .18f));
-            stageQuitButton.onClick.AddListener(QuitStageGame);
-            Text pauseHint = CreateText("暂停提示", pauseCard.transform, "ESC  返回游戏", 14,
-                TextAnchor.MiddleCenter, new Color(.48f, .72f, .79f));
-            SetRect(pauseHint.rectTransform, new Vector2(.15f, .005f), new Vector2(.85f, .06f));
-
-            stageSettingsPanel = CreatePanel("第二章设置页", canvas.transform,
+            stageSettingsPanel = CreatePanel("第二章设置页", stagePausePanel.transform,
                 new Color(.002f, .009f, .014f, .96f), Vector2.zero, Vector2.one);
             GameObject settingsCard = CreatePanel("第二章设置主卡", stageSettingsPanel.transform,
                 new Color(.008f, .035f, .046f, .998f), new Vector2(.27f, .14f), new Vector2(.73f, .86f));
@@ -1714,7 +1613,7 @@ namespace MeixiEcho
                 new Color(.055f, .30f, .34f, .99f), new Vector2(.16f, .08f), new Vector2(.84f, .23f));
             stageSettingsBackButton.onClick.AddListener(CloseStageSettings);
 
-            stageTerminalPanel = CreatePanel("第二章终端模态层", canvas.transform,
+            stageTerminalPanel = CreatePanel("第二章终端模态层", stagePausePanel.transform,
                 new Color(.001f, .005f, .010f, .97f), Vector2.zero, Vector2.one);
             GameObject terminalCard = CreatePanel("第二章终端主卡", stageTerminalPanel.transform,
                 new Color(.006f, .024f, .031f, .998f), new Vector2(.24f, .19f), new Vector2(.76f, .81f));
@@ -1724,7 +1623,7 @@ namespace MeixiEcho
             terminalTitle.font = displayFont;
             SetRect(terminalTitle.rectTransform, new Vector2(.08f, .78f), new Vector2(.92f, .92f));
             Text terminalHelp = CreateText("第二章终端帮助", terminalCard.transform,
-                "exit/zjh  退出游戏    ·    game-two/zjh  保持第二章并重新载入", 16,
+                "exit/zjh  退出游戏    ·    game-two/zjh  第二章    ·    game-three/zjh  第三章", 16,
                 TextAnchor.MiddleCenter, new Color(.72f, .84f, .86f));
             SetRect(terminalHelp.rectTransform, new Vector2(.08f, .64f), new Vector2(.92f, .76f));
             GameObject inputPlate = CreatePanel("第二章终端输入框", terminalCard.transform,
@@ -1759,6 +1658,12 @@ namespace MeixiEcho
         }
 
         private void SetStagePaused(bool value)
+        {
+            if (sharedPauseMenu != null) sharedPauseMenu.SetPaused(value);
+            else ApplyStagePause(value);
+        }
+
+        private void ApplyStagePause(bool value)
         {
             stagePaused = value;
             if (!stagePaused)
@@ -1868,6 +1773,14 @@ namespace MeixiEcho
                 StartCoroutine(ReloadStageFromTerminal());
                 return;
             }
+            if (command == "game-three/zjh")
+            {
+                stageTerminalExecuting = true;
+                stageTerminalOutput.text = "指令已接受：正在初始化第三章民宿实践……";
+                stageTerminalOutput.color = new Color(.54f, 1f, .80f);
+                StartCoroutine(LoadChapterThreeFromStageTerminal());
+                return;
+            }
             stageTerminalOutput.text = command.Length == 0 ? "请输入指令后再执行。" : "未知指令。终端未修改任何游戏数据。";
             stageTerminalOutput.color = command.Length == 0 ? new Color(1f, .70f, .34f) : new Color(1f, .45f, .36f);
             stageTerminalInput.Select();
@@ -1888,6 +1801,19 @@ namespace MeixiEcho
             yield return new WaitForSecondsRealtime(.28f);
             SetStagePaused(false);
             SceneManager.LoadScene("MeixiTheatre");
+        }
+
+        private IEnumerator LoadChapterThreeFromStageTerminal()
+        {
+            yield return new WaitForSecondsRealtime(.28f);
+            if (!MeixiChapterRouter.TryLoadChapterThree(true, out string error))
+            {
+                stageTerminalExecuting = false;
+                stageTerminalOutput.text = error;
+                stageTerminalOutput.color = new Color(1f, .45f, .36f);
+                stageTerminalInput.Select();
+                stageTerminalInput.ActivateInputField();
+            }
         }
 
         private void ReturnToVillageFromPause()

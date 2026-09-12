@@ -11,11 +11,15 @@ namespace MeixiEcho
     public static class MeixiCursorState
     {
         private static bool pointerMode;
+        private static int blockedThroughFrame;
+        public static bool GameplayInputBlocked => pointerMode || Time.frameCount <= blockedThroughFrame;
+        public static void BlockGameplayInput() => blockedThroughFrame = Time.frameCount + 1;
 
         public static bool IsPointerMode => pointerMode;
 
         public static void SetGameplay()
         {
+            if (pointerMode) BlockGameplayInput();
             pointerMode = false;
             Apply();
         }
@@ -71,6 +75,8 @@ namespace MeixiEcho
 
         private void HandleSceneChanged(Scene previous, Scene next)
         {
+            Time.timeScale = 1f;
+            AudioListener.pause = false;
             // Every scene starts in gameplay mode.  A quiz, menu or inventory
             // explicitly opts into pointer mode on the following frame.
             MeixiCursorState.SetGameplay();

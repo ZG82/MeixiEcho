@@ -128,6 +128,7 @@ namespace MeixiEcho
         private GameObject chapterPanel;
         private GameObject endingPanel;
         private GameObject pausePanel;
+        private MeixiSharedChapterPauseMenu sharedPauseMenu;
         private GameObject pauseSettingsPanel;
         private bool pauseSettingsOpen;
         private Button pauseResumeButton;
@@ -437,7 +438,7 @@ namespace MeixiEcho
         public bool CinematicInputLocked => Time.unscaledTime < cinematicInputLockedUntil;
         // A modal screen owns the pointer. Camera recovery must not recapture it
         // when the player clicks an achievement or settings control.
-        public bool PointerUiOpen => !started || paused || openingActive || dialogueOpen || complete ||
+        public bool PointerUiOpen => !started || paused || openingActive || dialogueOpen || (complete && !secondChapterRouteActive) || defeatOpen ||
                                      gameplayGuideOpen || phaseThreeGuideOpen || pauseSettingsOpen ||
                                      (terminalPanel != null && terminalPanel.activeSelf) ||
                                      (chapterTwoAdventureRuntime != null && chapterTwoAdventureRuntime.IsInputModalOpen);
@@ -486,8 +487,6 @@ namespace MeixiEcho
             // cannot expose a transient 3D scene frame.
             TryStartCaptureMode();
             TryStartSecondChapterSmokeTest();
-            if (MeixiLocalProgress.TerminalBookPending && !IsAutomatedPresentationRun())
-                StartCoroutine(ResumeTerminalBookReturnRoutine());
         }
 
         private void TryStartSecondChapterSmokeTest()
@@ -732,7 +731,11 @@ namespace MeixiEcho
                     chapterTwoAdventureRuntime = FindAnyObjectByType<ChapterTwoAdventureRuntime>();
             }
 
-            if (PointerUiOpen && !sceneTransitionActive) MeixiCursorState.SetPointer();
+            if (!sceneTransitionActive)
+            {
+                if (PointerUiOpen) MeixiCursorState.SetPointer();
+                else MeixiCursorState.SetGameplay();
+            }
 
             // Runtime-created route objects can disappear when Unity recompiles
             // scripts while Play Mode is open. Keep the entrance deterministic in
@@ -878,10 +881,15 @@ namespace MeixiEcho
                     ClosePauseSettings();
                     return;
                 }
+                if (sharedPauseMenu != null && sharedPauseMenu.IsPaused)
+                {
+                    sharedPauseMenu.HandleEscape();
+                    return;
+                }
                 TogglePause();
                 return;
             }
-            if (paused && mouse != null && mouse.leftButton.wasPressedThisFrame)
+            if (paused && pauseSettingsOpen && mouse != null && mouse.leftButton.wasPressedThisFrame)
             {
                 Vector2 pointer = mouse.position.ReadValue();
                 // Direct pointer fallback: the pause menu remains usable even if
@@ -2949,35 +2957,12 @@ namespace MeixiEcho
 
         private void BuildPauseUI()
         {
-            pausePanel = CreatePanel("暂停界面", canvas.transform, new Color(0.003f, 0.012f, 0.020f, 0.82f), Vector2.zero, Vector2.one);
-            var card = CreatePanel("暂停主卡", pausePanel.transform, new Color(0.018f, 0.055f, 0.080f, 0.98f), new Vector2(0.34f, 0.16f), new Vector2(0.66f, 0.84f));
-            PolishPanel(card, new Color(1f, 0.55f, 0.17f, 0.65f));
-            card.AddComponent<MeixiUiPanelReveal>().Configure(.24f, .90f);
-            var eyebrow = CreateText("暂停眉题", card.transform, "MEIXI RESONANCE", 16, TextAnchor.MiddleCenter, new Color(0.32f, 0.82f, 0.92f));
-            SetRect(eyebrow.rectTransform, new Vector2(0.12f, 0.84f), new Vector2(0.88f, 0.92f), Vector2.zero, Vector2.zero);
-            var title = CreateText("暂停标题", card.transform, "魂 音 暂 歇", 48, TextAnchor.MiddleCenter, new Color(1f, 0.78f, 0.34f));
-            SetRect(title.rectTransform, new Vector2(0.08f, 0.68f), new Vector2(0.92f, 0.84f), Vector2.zero, Vector2.zero);
-            DecorateText(title, Color.black, new Vector2(3f, -3f), true);
-            pausePracticeText = CreateText("实践记录", card.transform, string.Empty, 15,
-                TextAnchor.MiddleCenter, new Color(.48f, .90f, .88f));
-            pausePracticeText.lineSpacing = 1.12f;
-            SetRect(pausePracticeText.rectTransform, new Vector2(.10f, .615f), new Vector2(.90f, .685f), Vector2.zero, Vector2.zero);
-            var controls = CreateText("暂停操作", card.transform, "WASD  行走     鼠标  环绕镜头\nSPACE  跳跃     左 / 右键（J / K）声纹打击\nE  聆听魂音（战斗开始后按提示回应）", 19, TextAnchor.MiddleCenter, new Color(0.74f, 0.87f, 0.93f));
-            SetRect(controls.rectTransform, new Vector2(0.09f, 0.445f), new Vector2(0.91f, 0.595f), Vector2.zero, Vector2.zero);
-            pauseResumeButton = CreateButton("继续游戏", card.transform, "继 续 聆 听", new Color(0.62f, 0.18f, 0.07f, 0.98f));
-            SetRect(pauseResumeButton.GetComponent<RectTransform>(), new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.44f), Vector2.zero, Vector2.zero);
-            pauseResumeButton.onClick.AddListener(TogglePause);
-            pauseSettingsButton = CreateButton("设置与成就", card.transform, "设 置 · 成 就", new Color(.13f, .16f, .34f, .98f));
-            SetRect(pauseSettingsButton.GetComponent<RectTransform>(), new Vector2(.18f, .20f), new Vector2(.49f, .31f), Vector2.zero, Vector2.zero);
-            pauseSettingsButton.onClick.AddListener(OpenPauseSettings);
-            pauseRestartButton = CreateButton("重新开始", card.transform, "重 新 启 程", new Color(0.06f, 0.24f, 0.31f, 0.98f));
-            SetRect(pauseRestartButton.GetComponent<RectTransform>(), new Vector2(.51f, .20f), new Vector2(.82f, .31f), Vector2.zero, Vector2.zero);
-            pauseRestartButton.onClick.AddListener(RestartFromPause);
-            pauseQuitButton = CreateButton("退出游戏", card.transform, "退 出 游 戏", new Color(0.30f, 0.07f, 0.08f, 0.98f));
-            SetRect(pauseQuitButton.GetComponent<RectTransform>(), new Vector2(0.18f, 0.07f), new Vector2(0.82f, 0.18f), Vector2.zero, Vector2.zero);
-            pauseQuitButton.onClick.AddListener(QuitGame);
-            var hint = CreateText("暂停提示", card.transform, "ESC  返回游戏", 14, TextAnchor.MiddleCenter, new Color(0.48f, 0.72f, 0.79f));
-            SetRect(hint.rectTransform, new Vector2(0.15f, 0.005f), new Vector2(0.85f, 0.06f), Vector2.zero, Vector2.zero);
+            sharedPauseMenu = GetComponent<MeixiSharedChapterPauseMenu>() ?? gameObject.AddComponent<MeixiSharedChapterPauseMenu>();
+            sharedPauseMenu.Initialize(canvas, "CHAPTER 01 / 梅溪村",
+                () => $"乡村数字文化实践 · 第 {MeixiLocalProgress.PracticeNumber:00} 次",
+                ApplyChapterPause, RestartFromPause, () => SetPaused(false),
+                "WASD 行走 · 鼠标观察\nSPACE 跳跃 · J/K 声纹打击\nE 聆听魂音 · ESC 返回游戏", OpenPauseSettings);
+            pausePanel = sharedPauseMenu.PanelRoot;
             BuildPauseSettingsUI();
             pausePanel.SetActive(false);
         }
@@ -3052,7 +3037,7 @@ namespace MeixiEcho
                 TextAnchor.MiddleCenter, new Color(1f, .75f, .28f));
             SetRect(title.rectTransform, new Vector2(.08f, .73f), new Vector2(.92f, .87f), Vector2.zero, Vector2.zero);
             Text help = CreateText("终端帮助", card.transform,
-                "输入授权指令后按 Enter 执行\nexit/zjh  退出游戏    ·    game-two/zjh  保存为第二章并重新载入", 15,
+                "输入授权指令后按 Enter 执行\nexit/zjh  退出游戏    ·    game-two/zjh  第二章    ·    game-three/zjh  第三章", 15,
                 TextAnchor.MiddleCenter, new Color(.72f, .84f, .86f));
             help.lineSpacing = 1.12f;
             SetRect(help.rectTransform, new Vector2(.08f, .57f), new Vector2(.92f, .73f), Vector2.zero, Vector2.zero);
@@ -4362,6 +4347,12 @@ namespace MeixiEcho
                     terminalOutput.color = new Color(.54f, 1f, .80f);
                     StartCoroutine(LoadChapterTwoFromTerminalRoutine());
                     break;
+                case "game-three/zjh":
+                    terminalCommandExecuting = true;
+                    terminalOutput.text = "指令已接受：正在初始化第三章民宿实践……";
+                    terminalOutput.color = new Color(.54f, 1f, .80f);
+                    StartCoroutine(LoadChapterThreeFromTerminalRoutine());
+                    break;
                 default:
                     terminalOutput.text = "未知指令。终端未修改任何游戏数据。";
                     terminalOutput.color = new Color(1f, .45f, .36f);
@@ -4465,6 +4456,27 @@ namespace MeixiEcho
             }, .42f, .08f, 0f);
         }
 
+        private IEnumerator LoadChapterThreeFromTerminalRoutine()
+        {
+            yield return new WaitForSecondsRealtime(.28f);
+            if (!MeixiChapterRouter.CanLoadChapterThree(out string error))
+            {
+                terminalCommandExecuting = false;
+                terminalOutput.text = error;
+                terminalOutput.color = new Color(1f, .45f, .36f);
+                ReactivateTerminalInput();
+                yield break;
+            }
+            CloseTerminal();
+            SetPaused(false);
+            started = true;
+            BeginScreenTransition("终 端 · 载 入 第 三 章", () =>
+            {
+                if (!MeixiChapterRouter.TryLoadChapterThree(true, out string loadError))
+                    Debug.LogError("[MeixiChapterThree] " + loadError);
+            }, .42f, .08f, 0f);
+        }
+
         private void AdjustMasterVolume(float delta)
         {
             MeixiLocalProgress.SetMasterVolume(MeixiLocalProgress.MasterVolume + delta);
@@ -4509,6 +4521,16 @@ namespace MeixiEcho
         }
 
         private void SetPaused(bool value)
+        {
+            if (sharedPauseMenu != null)
+            {
+                sharedPauseMenu.SetPaused(value);
+                return;
+            }
+            ApplyChapterPause(value);
+        }
+
+        private void ApplyChapterPause(bool value)
         {
             if (value && !paused)
             {
@@ -4748,12 +4770,18 @@ namespace MeixiEcho
                 StartAdventure();
                 return;
             }
+            int savedChapter = MeixiLocalProgress.CurrentChapter;
             started = true;
             BeginScreenTransition("读 取 本 地 回 响", () =>
             {
                 Time.timeScale = 1f;
                 AudioListener.pause = false;
-                UnityEngine.SceneManagement.SceneManager.LoadScene("MeixiTheatre");
+                if (savedChapter >= 3)
+                {
+                    if (!MeixiChapterRouter.TryLoadChapterThree(false, out string error))
+                        Debug.LogError("[MeixiChapterThree] " + error);
+                }
+                else UnityEngine.SceneManagement.SceneManager.LoadScene("MeixiTheatre");
             }, .48f, .10f, 0f);
         }
 

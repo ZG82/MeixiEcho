@@ -1,10 +1,13 @@
 # Third-party notices
 
+本说明随《梅溪回响》v1.1.1 源码与 Windows 发布包提供，清单基准日期为 2026 年 9 月 12 日。
+
 《梅溪回响》使用了 Unity 生态组件、开源软件、开放内容素材及需要单独授权的音乐或美术资源。
 
 发布源码或游戏构建时，请同时核对并保留以下文件：
 
 - [开源项目引用声明.md](开源项目引用声明.md)：项目级依赖、许可证和素材来源总表。
+- 该总表同时覆盖 `PromoWeb/` 宣发网站的直接 npm 依赖；网站传递依赖以 `PromoWeb/package-lock.json` 为准。
 - `Assets/MeixiEcho/ThirdPartyNotices/Microsoft-Rocketbox-MIT.md`：Microsoft Rocketbox Avatar Library 的 MIT 声明。
 - `Assets/MeixiEcho/ThirdPartyNotices/MinOperaPrelude.md`：闽剧相关音频的来源与使用说明。
 - `Assets/MeixiEcho/Resources/Audio/README_授权音乐.txt`：非开源授权音乐提示。

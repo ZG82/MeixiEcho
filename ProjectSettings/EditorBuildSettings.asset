@@ -11,5 +11,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/MeixiTheatre.unity
     guid: 9529a63246fce8a4c8c4a11a0adb0845
+  - enabled: 1
+    path: Assets/Scenes/MeixiChapterThree.unity
+    guid: 1f8d60d17d514ed69cc4db96b005b53f
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
